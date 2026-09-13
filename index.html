@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequence Alignment Demos</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 24px 20px 40px; color: #222; background: #fff; max-width: 820px;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  .sub { color: #555; margin: 0 0 22px; line-height: 1.5; }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  li a {
+    display: block; padding: 14px 18px; border: 1.5px solid #ccc; border-radius: 10px;
+    text-decoration: none; color: inherit; background: #fafafa;
+  }
+  li a:hover { border-color: #1e6fd9; background: #f3f7fd; }
+  .name { font-size: 1.1rem; font-weight: 600; color: #1e6fd9; }
+  .num { display: inline-block; width: 1.6em; color: #888; font-weight: 600; }
+  .desc { margin: 4px 0 0 1.6em; color: #444; line-height: 1.5; }
+  .tags { margin: 6px 0 0 1.6em; font-size: .85rem; color: #777; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; background: #eee; padding: 0 4px; border-radius: 3px; }
+  footer { margin-top: 26px; font-size: .85rem; color: #777; line-height: 1.5; }
+</style>
+</head>
+<body>
+<h1>Sequence alignment demos</h1>
+<p class="sub">Interactive, single-page teaching demos for dynamic-programming alignment. Each page runs entirely in the browser:
+type your own sequences and step through the algorithm with the buttons or the arrow keys.</p>
+
+<ol>
+  <li><a href="edit-distance.html">
+    <span class="num">1</span><span class="name">Edit distance by dynamic programming</span>
+    <div class="desc">Fill the DP matrix cell by cell or row by row. Every cell shows an arrow from each predecessor that attains the minimum, so ties are visible, and a toggle highlights all optimal traceback paths.</div>
+    <div class="tags">Levenshtein distance · O(NM) · traceback</div>
+  </a></li>
+  <li><a href="ond.html">
+    <span class="num">2</span><span class="name">Ukkonen’s O(ND) algorithm, wavefront style</span>
+    <div class="desc">Compute only the cells whose edit distance is small. Wave d expands from the ed&nbsp;=&nbsp;d−1 cells and then extends along matching diagonals; cells the algorithm never visits stay blank.</div>
+    <div class="tags">diagonal transition · O(ND) · wavefront</div>
+  </a></li>
+  <li><a href="blast.html">
+    <span class="num">3</span><span class="name">BLAST-like alignment: seed and extend</span>
+    <div class="desc">Index the reference into k-letter words, look up every query word, extend each seed end-to-end without gaps, and keep the placement with the most matches. Seeds and extensions are drawn as diagonals of the alignment matrix.</div>
+    <div class="tags">k-mer dictionary · seed and extend · gap-free hits</div>
+  </a></li>
+</ol>
+
+<footer>Source: <a href="https://github.com/lh3/teach-demo">github.com/lh3/teach-demo</a>. No external dependencies; each page also works when opened as a local file.</footer>
+</body>
+</html>
