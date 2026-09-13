@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ukkonen's O(ND) Edit Distance Demo</title>
+<style>
+  :root {
+    --done: #7b3fa0;
+    --cur: #d62828;
+    --green: #1a9e3f;
+    --ref: #b0b0b0;
+    --exp: #3a3f4b;
+    --win: #fff3c4;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff;
+    max-width: 1200px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  .controls input[type=text] {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 1rem; letter-spacing: .12em; text-transform: uppercase;
+    padding: 4px 6px; width: 18ch;
+  }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .9rem; margin-bottom: 10px; align-items: center; }
+  .legend .num { font: 700 15px ui-monospace, Menlo, Consolas, monospace; margin-right: 6px; }
+  .legend .sw { display: inline-block; width: 26px; height: 3px; vertical-align: middle; margin-right: 6px; position: relative; }
+  .legend .sw::after { content: ""; position: absolute; right: -2px; top: -3px; border: 4.5px solid transparent; border-left: 7px solid currentColor; }
+  .legend .box { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; border: 1px solid #bbb; }
+
+  .timeline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 10px; font-size: .9rem; }
+  .timeline button { padding: 2px 10px; font-size: .85rem; border-radius: 12px; border: 1px solid #bbb; background: #f6f6f6; }
+  .timeline button.on { background: var(--cur); border-color: var(--cur); color: #fff; font-weight: 600; }
+  .timeline button.past { background: #eee3f5; border-color: var(--done); color: var(--done); }
+
+  #matrix { overflow-x: auto; }
+  svg { display: block; user-select: none; -webkit-user-select: none; width: 100%; height: auto; }
+  .hdr rect { fill: #e9e9ee; stroke: #bbb; stroke-width: 1; }
+  .hdr text { text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: #222; }
+  .hdr text.ch { font: 700 17px ui-monospace, Menlo, Consolas, monospace; }
+  .hdr text.idx { font: 10px system-ui, sans-serif; fill: #777; }
+  .corner rect { fill: #f7f7f9; stroke: #bbb; }
+  .corner text { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+  .cell { cursor: pointer; }
+  .cell rect { fill: #fff; stroke: #bbb; stroke-width: 1; }
+  .cell.match rect { fill: #e8f1e8; }
+  .cell.fresh rect { fill: #fde8e8; }
+  .cell.fresh.match rect { fill: #f3ecd6; }
+  .cell:hover rect { stroke: #333; stroke-width: 1.5; }
+  .cell.hl rect { stroke: #222; stroke-width: 2.2; }
+  .val { font: 600 15px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .val.done { fill: var(--done); }
+  .val.cur { fill: var(--cur); }
+  .val.green { fill: var(--green); }
+  .val.ref { fill: var(--ref); font-weight: 400; }
+  .arrow { fill: none; stroke-width: 2; pointer-events: none; }
+  .arrow.exp { stroke: var(--exp); }
+  .arrow.ext { stroke: var(--green); stroke-width: 2.6; }
+  .arrow.past { opacity: .22; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 10px; }
+  #explain {
+    margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  #explain i { font-family: system-ui, sans-serif; font-style: normal; color: #666; font-size: .9em; }
+  .c-done { color: var(--done); } .c-cur { color: var(--cur); } .c-green { color: var(--green); }
+  .muted { color: #888; font-family: system-ui, sans-serif; }
+  .chain { display: block; }
+</style>
+</head>
+<body>
+<h1>Ukkonen’s O(ND) algorithm for edit distance (wavefront style)</h1>
+
+<div class="controls">
+  <label>Sequence A (columns) <input type="text" id="seqA" value="GCATGCA" maxlength="20" spellcheck="false" autocomplete="off"></label>
+  <label>Sequence B (rows) <input type="text" id="seqB" value="GATTACA" maxlength="20" spellcheck="false" autocomplete="off"></label>
+  <button id="btnBack" title="Previous phase (←)">◀ Back</button>
+  <button id="btnStep" title="Next phase (→)">Step ▶</button>
+  <button id="btnWave" title="Finish the current wave and its extension (w)">Next wave ▶▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Clear (r)">Reset</button>
+  <label><input type="checkbox" id="chkRef"> Show full DP values</label>
+  <label><input type="checkbox" id="chkKeep"> Keep arrows from earlier phases</label>
+</div>
+
+<p class="hint">
+  Each wave <b>d</b> has two phases. <b>Expand:</b> every unassigned right, down or diagonal neighbour of an
+  ed&nbsp;=&nbsp;d−1 cell gets ed&nbsp;=&nbsp;d. <b>Extend:</b> from every ed&nbsp;=&nbsp;d cell, walk down the diagonal
+  while A[j]&nbsp;=&nbsp;B[i]; those cells also have ed&nbsp;=&nbsp;d. After wave d, <em>all</em> cells with ed&nbsp;≤&nbsp;d are
+  known. Stop when the bottom-right cell is reached; cells never visited are never computed.
+  Click a cell to jump to the phase that assigns it. Keys: <kbd>→</kbd> step, <kbd>←</kbd> back,
+  <kbd>w</kbd> next wave, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>g</kbd> grey values, <kbd>a</kbd> keep arrows.
+</p>
+
+<div class="legend">
+  <span><span class="num c-done">2</span>earlier waves (ed &lt; d)</span>
+  <span><span class="num c-cur">3</span>current wave (ed = d)</span>
+  <span><span class="num c-green">3</span>extended along a matching diagonal in this phase</span>
+  <span><span class="num" style="color:var(--ref);font-weight:400">4</span>reference value, not computed by the algorithm</span>
+  <span><span class="box" style="background:#e8f1e8"></span>A[j] = B[i]</span>
+  <span><span class="box" style="background:#fde8e8"></span>assigned in this phase</span>
+  <span style="color:var(--exp)"><span class="sw" style="background:currentColor"></span>expand (+1)</span>
+  <span style="color:var(--green)"><span class="sw" style="background:currentColor"></span>extend (+0, match)</span>
+</div>
+
+<div class="timeline" id="timeline"></div>
+<div id="matrix"></div>
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const CELL = 44, HDR = 46;
+  const $ = id => document.getElementById(id);
+  const elA = $('seqA'), elB = $('seqB'), elM = $('matrix'), elX = $('explain'), elS = $('status'), elT = $('timeline');
+  const chkRef = $('chkRef'), chkKeep = $('chkKeep');
+
+  let A = '', B = '', n = 0, m = 0, D = [], W = null, k = 0, S = 0;
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clean = s => s.toUpperCase().replace(/\s+/g, '').slice(0, 20);
+
+  // Full DP, used only as the grey reference and as a self-check.
+  function computeDP(A, B) {
+    const n = A.length, m = B.length, D = [];
+    for (let i = 0; i <= m; i++) {
+      D.push(new Array(n + 1).fill(0));
+      for (let j = 0; j <= n; j++) {
+        if (i === 0) D[i][j] = j;
+        else if (j === 0) D[i][j] = i;
+        else D[i][j] = Math.min(D[i - 1][j - 1] + (A[j - 1] === B[i - 1] ? 0 : 1), D[i - 1][j] + 1, D[i][j - 1] + 1);
+      }
+    }
+    return D;
+  }
+
+  // Ukkonen / wavefront, cell-set formulation. Returns per-phase snapshots.
+  //   val[i][j]  : ed assigned to the cell, or -1 if never computed
+  //   when[i][j] : 1-based step index at which the cell is assigned, or -1
+  //   steps[s-1] : {d, phase, newCells, greenCells, arrows, chains}
+  function computeWaves(A, B) {
+    const n = A.length, m = B.length;
+    const mk = v => Array.from({ length: m + 1 }, () => new Array(n + 1).fill(v));
+    const val = mk(-1), when = mk(-1);
+    const steps = [];
+    const key = (i, j) => i + ',' + j;
+    let d = 0, prev = [];
+    for (;;) {
+      // ---- expand
+      const cur = [], arrows = [], newCells = [];
+      if (d === 0) {
+        val[0][0] = 0; cur.push([0, 0]); newCells.push([0, 0]);
+      } else {
+        for (const [i, j] of prev) {
+          for (const [di, dj, kind] of [[0, 1, 'right'], [1, 0, 'down'], [1, 1, 'diag']]) {
+            const ni = i + di, nj = j + dj;
+            if (ni > m || nj > n) continue;
+            if (val[ni][nj] === -1) { val[ni][nj] = d; cur.push([ni, nj]); newCells.push([ni, nj]); }
+            if (val[ni][nj] === d) arrows.push({ from: [i, j], to: [ni, nj], kind });
+          }
+        }
+      }
+      for (const [i, j] of newCells) when[i][j] = steps.length + 1;
+      steps.push({ d, phase: 'expand', newCells, greenCells: [], arrows, chains: [] });
+      if (cur.length === 0) break; // cannot happen while (m,n) is unassigned; safety only
+
+      // ---- extend along matching diagonals
+      const ext = { d, phase: 'extend', newCells: [], greenCells: [], arrows: [], chains: [] };
+      const walked = new Set();
+      for (let idx = 0; idx < cur.length; idx++) {   // cur grows while we walk
+        let [i, j] = cur[idx];
+        if (walked.has(key(i, j))) continue;
+        const chain = [[i, j]];
+        while (i < m && j < n && A[j] === B[i]) {
+          walked.add(key(i, j)); ext.greenCells.push([i, j]);
+          const ni = i + 1, nj = j + 1;
+          ext.arrows.push({ from: [i, j], to: [ni, nj], kind: 'ext' });
+          if (val[ni][nj] === -1) { val[ni][nj] = d; cur.push([ni, nj]); ext.newCells.push([ni, nj]); }
+          chain.push([ni, nj]);
+          i = ni; j = nj;
+          if (walked.has(key(i, j))) break;
+        }
+        if (chain.length > 1) ext.chains.push(chain);
+      }
+      for (const [i, j] of ext.newCells) when[i][j] = steps.length + 1;
+      steps.push(ext);
+
+      if (val[m][n] !== -1) break;
+      prev = cur; d++;
+    }
+    return { val, when, steps };
+  }
+
+  function rebuild() {
+    A = clean(elA.value); B = clean(elB.value);
+    n = A.length; m = B.length;
+    D = computeDP(A, B);
+    W = computeWaves(A, B);
+    S = W.steps.length;
+    // self-check: every assigned value equals the full DP
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= n; j++)
+      console.assert(W.val[i][j] === -1 || W.val[i][j] === D[i][j], 'mismatch at', i, j);
+    // cumulative computed-cell counts per step
+    W.counts = new Array(S + 1).fill(0);
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= n; j++) if (W.when[i][j] > 0) W.counts[W.when[i][j]]++;
+    for (let s = 1; s <= S; s++) W.counts[s] += W.counts[s - 1];
+    k = 0;
+    render();
+  }
+
+  const setK = v => { k = Math.max(0, Math.min(S, v)); render(); };
+  const stepOf = s => W.steps[s - 1];
+  const cellName = (i, j) => `D[${i}][${j}]`;
+  const lastStepOfWave = d => { let s = 0; for (let t = 1; t <= S; t++) if (stepOf(t).d === d) s = t; return s; };
+
+  function render() {
+    const total = (m + 1) * (n + 1);
+    const W1 = HDR + (n + 1) * CELL, H1 = HDR + (m + 1) * CELL;
+    const st = k > 0 ? stepOf(k) : null;
+    const curD = st ? st.d : -1;
+    const fresh = new Set(), green = new Set();
+    if (st) { for (const [i, j] of st.newCells) fresh.add(i + ',' + j); for (const [i, j] of st.greenCells) green.add(i + ',' + j); }
+    const showRef = chkRef.checked, keep = chkKeep.checked;
+
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 ${W1 + 2} ${H1 + 2}" style="max-width:${W1 + 2}px">`;
+    s += '<defs>';
+    for (const [id, col] of [['exp', '#3a3f4b'], ['ext', '#1a9e3f']]) {
+      s += `<marker id="ah-${id}" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="${col}"/></marker>`;
+    }
+    s += '</defs>';
+
+    s += `<g class="corner"><rect x="0" y="0" width="${HDR}" height="${HDR}"/><text x="${HDR / 2}" y="${HDR / 2 - 7}">B[i] \\ A[j]</text><text x="${HDR / 2}" y="${HDR / 2 + 7}">D[i][j]</text></g>`;
+    for (let j = 0; j <= n; j++) {
+      const x = HDR + j * CELL;
+      s += `<g class="hdr"><rect x="${x}" y="0" width="${CELL}" height="${HDR}"/>` +
+        `<text class="idx" x="${x + CELL / 2}" y="10">j=${j}</text>` +
+        `<text class="ch" x="${x + CELL / 2}" y="${HDR / 2 + 7}">${j ? esc(A[j - 1]) : '–'}</text></g>`;
+    }
+    for (let i = 0; i <= m; i++) {
+      const y = HDR + i * CELL;
+      s += `<g class="hdr"><rect x="0" y="${y}" width="${HDR}" height="${CELL}"/>` +
+        `<text class="idx" x="10" y="${y + CELL / 2}">${i}</text>` +
+        `<text class="ch" x="${HDR / 2 + 7}" y="${y + CELL / 2}">${i ? esc(B[i - 1]) : '–'}</text></g>`;
+    }
+
+    let rects = '', vals = '';
+    for (let i = 0; i <= m; i++) {
+      for (let j = 0; j <= n; j++) {
+        const x = HDR + j * CELL, y = HDR + i * CELL, key = i + ',' + j;
+        const assigned = W.when[i][j] > 0 && W.when[i][j] <= k;
+        const cls = ['cell'];
+        if (i > 0 && j > 0 && A[j - 1] === B[i - 1]) cls.push('match');
+        if (fresh.has(key)) cls.push('fresh');
+        if (i === m && j === n && assigned) cls.push('hl');
+        rects += `<g class="${cls.join(' ')}" data-i="${i}" data-j="${j}"><rect x="${x}" y="${y}" width="${CELL}" height="${CELL}"/></g>`;
+        let vcls = null, v = D[i][j];
+        if (assigned) vcls = green.has(key) ? 'green' : (W.val[i][j] === curD ? 'cur' : 'done');
+        else if (showRef) vcls = 'ref';
+        if (vcls) vals += `<text class="val ${vcls}" x="${x + CELL / 2}" y="${y + CELL / 2}">${v}</text>`;
+      }
+    }
+
+    let arrows = '';
+    const r1 = 12, r2 = 14;
+    const drawArrows = (list, past) => {
+      for (const a of list) {
+        const [pi, pj] = a.from, [ci, cj] = a.to;
+        const px = HDR + pj * CELL + CELL / 2, py = HDR + pi * CELL + CELL / 2;
+        const cx = HDR + cj * CELL + CELL / 2, cy = HDR + ci * CELL + CELL / 2;
+        const dx = cx - px, dy = cy - py, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+        const id = a.kind === 'ext' ? 'ext' : 'exp';
+        arrows += `<line class="arrow ${id}${past ? ' past' : ''}" x1="${(px + ux * r1).toFixed(1)}" y1="${(py + uy * r1).toFixed(1)}" x2="${(cx - ux * r2).toFixed(1)}" y2="${(cy - uy * r2).toFixed(1)}" marker-end="url(#ah-${id})"/>`;
+      }
+    };
+    if (keep) for (let t = 1; t < k; t++) drawArrows(stepOf(t).arrows, true);
+    if (st) drawArrows(st.arrows, false);
+
+    s += rects + arrows + vals + '</svg>';
+    elM.innerHTML = s;
+
+    // timeline
+    const maxD = S ? stepOf(S).d : 0;
+    let tl = '<span class="muted">Waves:</span>';
+    for (let d = 0; d <= maxD; d++) {
+      const cls = d === curD ? 'on' : (d < curD ? 'past' : '');
+      tl += `<button class="${cls}" data-d="${d}" title="Jump to the end of wave ${d}">d=${d}</button>`;
+    }
+    elT.innerHTML = tl;
+
+    // status
+    const computed = W.counts[k];
+    const finished = k === S;
+    let status = k === 0 ? 'Empty grid' : `Wave d = ${curD} · phase: <b>${st.phase}</b> · step ${k} / ${S}`;
+    status += ` · computed ${computed} of ${total} cells`;
+    if (finished) status += ` (${Math.round(100 * computed / total)}%) · <b>edit distance = ${D[m][n]}</b>`;
+    elS.innerHTML = status;
+
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = finished; $('btnWave').disabled = finished; $('btnRun').disabled = finished;
+    showExplainDefault();
+  }
+
+  function explainStep(st) {
+    const dd = st.d;
+    if (st.phase === 'expand') {
+      if (dd === 0) return `d = 0: start at ${cellName(0, 0)} = <b class="c-cur">0</b> <i>(two empty prefixes)</i>`;
+      return `d = ${dd}: <b class="c-cur">${st.newCells.length}</b> unassigned neighbour${st.newCells.length === 1 ? '' : 's'} (right, down or diagonal) of ` +
+        `<span class="c-done">ed = ${dd - 1}</span> cells get <span class="c-cur">ed = ${dd}</span>. <i>${st.arrows.length} incoming edges, each costing +1.</i>`;
+    }
+    if (!st.chains.length) return `d = ${dd}: extend — no <span class="c-cur">ed = ${dd}</span> cell has a match on its diagonal; nothing to extend.`;
+    const MAX = 6;
+    let out = `d = ${dd}: extend along matching diagonals (+0), <b class="c-cur">${st.newCells.length}</b> new cell${st.newCells.length === 1 ? '' : 's'}:`;
+    st.chains.slice(0, MAX).forEach(ch => {
+      let line = '';
+      ch.forEach(([i, j], t) => {
+        if (t > 0) line += ` → <i>(${esc(A[j - 1])}=${esc(B[i - 1])})</i> `;
+        line += `<span class="${t === ch.length - 1 ? 'c-cur' : 'c-green'}">${cellName(i, j)}</span>`;
+      });
+      out += `<span class="chain">&nbsp;&nbsp;${line}</span>`;
+    });
+    if (st.chains.length > MAX) out += `<span class="chain muted">&nbsp;&nbsp;… ${st.chains.length - MAX} more</span>`;
+    return out;
+  }
+
+  function showExplainDefault() {
+    if (k === 0) { elX.innerHTML = '<span class="muted">Empty matrix. Press → (or Step) to start wave d = 0.</span>'; return; }
+    elX.innerHTML = explainStep(stepOf(k));
+  }
+
+  function hoverCell(i, j) {
+    const w = W.when[i][j];
+    if (w === -1) {
+      elX.innerHTML = `${cellName(i, j)} <span class="muted">is never computed by the algorithm (its edit distance ${D[i][j]} exceeds the final distance ${D[m][n]}).</span>`;
+    } else {
+      const st = stepOf(w);
+      if (w <= k) elX.innerHTML = `${cellName(i, j)} = <b>${W.val[i][j]}</b> <i>assigned in wave d = ${st.d}, ${st.phase} phase (step ${w})</i>`;
+      else elX.innerHTML = `${cellName(i, j)} <span class="muted">not yet reached; it will get ed = ${W.val[i][j]} in wave d = ${st.d} (${st.phase}, step ${w}). Click to jump there.</span>`;
+    }
+  }
+
+  // events
+  elM.addEventListener('click', e => {
+    const g = e.target.closest('g.cell');
+    if (!g) return;
+    const w = W.when[+g.dataset.i][+g.dataset.j];
+    if (w > 0) setK(w);
+  });
+  elM.addEventListener('mouseover', e => {
+    const g = e.target.closest('g.cell');
+    if (g) hoverCell(+g.dataset.i, +g.dataset.j);
+  });
+  elM.addEventListener('mouseout', e => {
+    const g = e.target.closest('g.cell');
+    if (g && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('g.cell'))) showExplainDefault();
+  });
+  elM.addEventListener('mouseleave', showExplainDefault);
+  elT.addEventListener('click', e => {
+    const b = e.target.closest('button[data-d]');
+    if (b) setK(lastStepOfWave(+b.dataset.d));
+  });
+
+  const nextWave = () => {
+    let t = k + 1;
+    while (t < S && stepOf(t).phase !== 'extend') t++;
+    setK(t);
+  };
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnWave').addEventListener('click', nextWave);
+  $('btnRun').addEventListener('click', () => setK(S));
+  $('btnReset').addEventListener('click', () => setK(0));
+  chkRef.addEventListener('change', render);
+  chkKeep.addEventListener('change', render);
+  elA.addEventListener('input', rebuild);
+  elB.addEventListener('input', rebuild);
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'w': case 'W': nextWave(); break;
+      case 'f': case 'F': setK(S); break;
+      case 'r': case 'R': setK(0); break;
+      case 'g': case 'G': chkRef.checked = !chkRef.checked; render(); break;
+      case 'a': case 'A': chkKeep.checked = !chkKeep.checked; render(); break;
+    }
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>
