@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit Distance DP Demo</title>
+<style>
+  :root {
+    --diag: #7b3fa0;
+    --up: #0b7a75;
+    --left: #d0731a;
+    --win: #fff3c4;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff;
+    max-width: 1200px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  .controls input[type=text] {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 1rem; letter-spacing: .12em; text-transform: uppercase;
+    padding: 4px 6px; width: 18ch;
+  }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .9rem; margin-bottom: 10px; align-items: center; }
+  .legend .sw { display: inline-block; width: 26px; height: 3px; vertical-align: middle; margin-right: 6px; position: relative; }
+  .legend .sw::after { content: ""; position: absolute; right: -2px; top: -3px; border: 4.5px solid transparent; border-left: 7px solid currentColor; }
+  .legend .box { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; border: 1px solid #bbb; }
+  .l-diag { color: var(--diag); } .l-up { color: var(--up); } .l-left { color: var(--left); }
+
+  #matrix { overflow-x: auto; }
+  svg { display: block; user-select: none; -webkit-user-select: none; width: 100%; height: auto; }
+  .hdr rect { fill: #e9e9ee; stroke: #bbb; stroke-width: 1; }
+  .hdr text { text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: #222; }
+  .hdr text.ch { font: 700 17px ui-monospace, Menlo, Consolas, monospace; }
+  .hdr text.idx { font: 10px system-ui, sans-serif; fill: #777; }
+  .rowhdr { cursor: pointer; }
+  .rowhdr:hover rect { fill: #d4d4de; }
+  .corner rect { fill: #f7f7f9; stroke: #bbb; }
+  .corner text { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+  .cell { cursor: pointer; }
+  .cell rect { fill: #f4f4f4; stroke: #bbb; stroke-width: 1; }
+  .cell.match rect { fill: #e8f1e8; }
+  .cell.filled rect { fill: #fff; }
+  .cell.filled.match rect { fill: #dff0df; }
+  .cell:hover rect { stroke: #333; stroke-width: 1.5; }
+  .cell.pred rect { stroke: #e6a800; stroke-width: 2.5; }
+  .cell.last rect { stroke: #222; stroke-width: 2.2; }
+  .cell.trace rect { fill: var(--win); }
+  .cell.trace.match rect { fill: #f0e9b0; }
+  .val { font: 600 15px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #111; pointer-events: none; }
+  .arrow { fill: none; stroke-width: 2; pointer-events: none; }
+  .arrow.diag { stroke: var(--diag); } .arrow.up { stroke: var(--up); } .arrow.left { stroke: var(--left); }
+  .arrow.trace { stroke-width: 3.6; }
+  svg.tracing .arrow:not(.trace) { opacity: .15; }
+  svg.tracing .val:not(.trace) { fill: #aaa; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 10px; }
+  #explain {
+    margin-top: 6px; font-size: 1.05rem; min-height: 1.6em; line-height: 1.6;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  #explain i { font-family: system-ui, sans-serif; font-style: normal; color: #666; font-size: .85em; }
+  .t-diag { color: var(--diag); } .t-up { color: var(--up); } .t-left { color: var(--left); }
+  .win { font-weight: 700; background: var(--win); padding: 0 3px; border-radius: 3px; }
+  .tie { font-family: system-ui, sans-serif; font-size: .85em; color: #a05a00; }
+  .muted { color: #888; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Edit distance by dynamic programming</h1>
+
+<div class="controls">
+  <label>Sequence A (columns) <input type="text" id="seqA" value="GATTACA" maxlength="20" spellcheck="false" autocomplete="off"></label>
+  <label>Sequence B (rows) <input type="text" id="seqB" value="GCATGCU" maxlength="20" spellcheck="false" autocomplete="off"></label>
+  <button id="btnBack" title="Un-fill one cell (←)">◀ Back</button>
+  <button id="btnStep" title="Fill the next cell (→)">Step ▶</button>
+  <button id="btnFill" title="Fill the whole matrix (f)">Fill all</button>
+  <button id="btnReset" title="Clear the matrix (r)">Reset</button>
+  <label><input type="checkbox" id="chkTrace" disabled> Show traceback</label>
+</div>
+
+<p class="hint">
+  <b>Click a cell</b> to fill the matrix up to that cell in row-major order.
+  <b>Click a row label</b> on the left to fill through the end of that row.
+  Clicking a filled cell rewinds to it. Hover a cell to see which cells it depends on and how its value is computed.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> fill all, <kbd>r</kbd> reset, <kbd>t</kbd> traceback.
+</p>
+
+<div class="legend">
+  <span class="l-diag"><span class="sw" style="background:currentColor"></span>diagonal: A[j] aligned to B[i] (+0 match, +1 mismatch)</span>
+  <span class="l-up"><span class="sw" style="background:currentColor"></span>from above: B[i] against a gap (+1)</span>
+  <span class="l-left"><span class="sw" style="background:currentColor"></span>from the left: A[j] against a gap (+1)</span>
+  <span><span class="box" style="background:#e8f1e8"></span>A[j] = B[i]</span>
+</div>
+
+<div id="matrix"></div>
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const CELL = 44, HDR = 46;
+  const DIRS = ['diag', 'up', 'left'];
+  const COLORS = { diag: '#7b3fa0', up: '#0b7a75', left: '#d0731a' };
+
+  const $ = id => document.getElementById(id);
+  const elA = $('seqA'), elB = $('seqB'), elM = $('matrix'), elX = $('explain'), elS = $('status');
+  const chk = $('chkTrace');
+
+  let A = '', B = '', n = 0, m = 0, D = [], P = [], k = 0, total = 1;
+  let cellEls = [];
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clean = s => s.toUpperCase().replace(/\s+/g, '').slice(0, 20);
+  const pred = (i, j, d) => d === 'diag' ? [i - 1, j - 1] : d === 'up' ? [i - 1, j] : [i, j - 1];
+  const idxOf = (i, j) => i * (n + 1) + j;
+
+  function computeDP(A, B) {
+    const n = A.length, m = B.length;
+    const D = [], P = [];
+    for (let i = 0; i <= m; i++) {
+      D.push(new Array(n + 1).fill(0));
+      P.push(new Array(n + 1).fill(null));
+      for (let j = 0; j <= n; j++) {
+        if (i === 0 && j === 0) { D[i][j] = 0; P[i][j] = []; continue; }
+        const cand = [];
+        if (i > 0 && j > 0) cand.push({ dir: 'diag', val: D[i - 1][j - 1] + (A[j - 1] === B[i - 1] ? 0 : 1) });
+        if (i > 0) cand.push({ dir: 'up', val: D[i - 1][j] + 1 });
+        if (j > 0) cand.push({ dir: 'left', val: D[i][j - 1] + 1 });
+        const best = Math.min(...cand.map(c => c.val));
+        D[i][j] = best;
+        P[i][j] = cand.filter(c => c.val === best).map(c => c.dir);
+      }
+    }
+    return { D, P };
+  }
+
+  function computeTrace() {
+    const cells = new Set(), arrows = new Set();
+    const stack = [[m, n]];
+    cells.add(m + ',' + n);
+    while (stack.length) {
+      const [i, j] = stack.pop();
+      for (const d of P[i][j]) {
+        const [pi, pj] = pred(i, j, d);
+        arrows.add(i + ',' + j + ',' + d);
+        const key = pi + ',' + pj;
+        if (!cells.has(key)) { cells.add(key); stack.push([pi, pj]); }
+      }
+    }
+    return { cells, arrows };
+  }
+
+  function rebuild() {
+    A = clean(elA.value); B = clean(elB.value);
+    n = A.length; m = B.length; total = (m + 1) * (n + 1);
+    ({ D, P } = computeDP(A, B));
+    k = 0;
+    render();
+  }
+
+  function setK(v) {
+    k = Math.max(0, Math.min(total, v));
+    render();
+  }
+
+  function render() {
+    const W = HDR + (n + 1) * CELL, H = HDR + (m + 1) * CELL;
+    const tracing = chk.checked && k === total;
+    const tr = tracing ? computeTrace() : null;
+
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 ${W + 2} ${H + 2}" style="max-width:${W + 2}px" class="${tracing ? 'tracing' : ''}">`;
+    s += '<defs>';
+    for (const d of DIRS) {
+      s += `<marker id="ah-${d}" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="${COLORS[d]}"/></marker>`;
+    }
+    s += '</defs>';
+
+    // corner + headers
+    s += `<g class="corner"><rect x="0" y="0" width="${HDR}" height="${HDR}"/><text x="${HDR / 2}" y="${HDR / 2 - 7}">B[i] \\ A[j]</text><text x="${HDR / 2}" y="${HDR / 2 + 7}">D[i][j]</text></g>`;
+    for (let j = 0; j <= n; j++) {
+      const x = HDR + j * CELL;
+      s += `<g class="hdr"><rect x="${x}" y="0" width="${CELL}" height="${HDR}"/>` +
+        `<text class="idx" x="${x + CELL / 2}" y="10">j=${j}</text>` +
+        `<text class="ch" x="${x + CELL / 2}" y="${HDR / 2 + 7}">${j ? esc(A[j - 1]) : '–'}</text></g>`;
+    }
+    for (let i = 0; i <= m; i++) {
+      const y = HDR + i * CELL;
+      s += `<g class="hdr rowhdr" data-row="${i}" title="Fill through row ${i}"><rect x="0" y="${y}" width="${HDR}" height="${CELL}"/>` +
+        `<text class="idx" x="10" y="${y + CELL / 2}">${i}</text>` +
+        `<text class="ch" x="${HDR / 2 + 7}" y="${y + CELL / 2}">${i ? esc(B[i - 1]) : '–'}</text></g>`;
+    }
+
+    // cells, arrows, values in three layers
+    let rects = '', arrows = '', vals = '';
+    const r1 = 12, r2 = 14;
+    for (let i = 0; i <= m; i++) {
+      for (let j = 0; j <= n; j++) {
+        const idx = idxOf(i, j), filled = idx < k;
+        const x = HDR + j * CELL, y = HDR + i * CELL;
+        const key = i + ',' + j;
+        const cls = ['cell'];
+        if (filled) cls.push('filled');
+        if (i > 0 && j > 0 && A[j - 1] === B[i - 1]) cls.push('match');
+        if (filled && idx === k - 1) cls.push('last');
+        const inTrace = tr && tr.cells.has(key);
+        if (inTrace) cls.push('trace');
+        rects += `<g class="${cls.join(' ')}" data-i="${i}" data-j="${j}"><rect x="${x}" y="${y}" width="${CELL}" height="${CELL}"/></g>`;
+        if (!filled) continue;
+        vals += `<text class="val${inTrace ? ' trace' : ''}" x="${x + CELL / 2}" y="${y + CELL / 2}">${D[i][j]}</text>`;
+        const cx = x + CELL / 2, cy = y + CELL / 2;
+        for (const d of P[i][j]) {
+          const [pi, pj] = pred(i, j, d);
+          const px = HDR + pj * CELL + CELL / 2, py = HDR + pi * CELL + CELL / 2;
+          const dx = cx - px, dy = cy - py, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+          const x1 = px + ux * r1, y1 = py + uy * r1, x2 = cx - ux * r2, y2 = cy - uy * r2;
+          const tcls = tr && tr.arrows.has(key + ',' + d) ? ' trace' : '';
+          arrows += `<line class="arrow ${d}${tcls}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" marker-end="url(#ah-${d})"/>`;
+        }
+      }
+    }
+    s += rects + arrows + vals + '</svg>';
+    elM.innerHTML = s;
+
+    cellEls = [];
+    for (const g of elM.querySelectorAll('g.cell')) {
+      const i = +g.dataset.i, j = +g.dataset.j;
+      (cellEls[i] = cellEls[i] || [])[j] = g;
+    }
+
+    chk.disabled = k < total;
+    elS.innerHTML = `Filled ${k} / ${total} cells` +
+      (k === total ? ` &nbsp;·&nbsp; <b>edit distance = ${D[m][n]}</b>` : '') +
+      (k === total && !chk.checked ? ' &nbsp;·&nbsp; <span class="muted">tick “Show traceback” to highlight all optimal paths</span>' : '');
+    showExplainDefault();
+  }
+
+  function term(dir, expr, v, best, note) {
+    return `<span class="t-${dir}${v === best ? ' win' : ''}">${expr} = ${v} <i>(${note})</i></span>`;
+  }
+
+  function explainFor(i, j) {
+    const nm = (a, b) => `D[${a}][${b}]`;
+    if (i === 0 && j === 0) return `${nm(0, 0)} = <b>0</b> <i>(both prefixes empty)</i>`;
+    const best = D[i][j], parts = [];
+    if (i > 0 && j > 0) {
+      const c = A[j - 1] === B[i - 1] ? 0 : 1;
+      const note = c ? `mismatch ${esc(A[j - 1])}/${esc(B[i - 1])}` : `match ${esc(A[j - 1])}/${esc(B[i - 1])}`;
+      parts.push(term('diag', `${nm(i - 1, j - 1)} + ${c}`, D[i - 1][j - 1] + c, best, note));
+    }
+    if (i > 0) parts.push(term('up', `${nm(i - 1, j)} + 1`, D[i - 1][j] + 1, best, `gap: –/${esc(B[i - 1])}`));
+    if (j > 0) parts.push(term('left', `${nm(i, j - 1)} + 1`, D[i][j - 1] + 1, best, `gap: ${esc(A[j - 1])}/–`));
+    const tie = P[i][j].length > 1 ? ` &nbsp;<span class="tie">tie: ${P[i][j].length} optimal predecessors</span>` : '';
+    const body = parts.length === 1 ? parts[0] : `min( ${parts.join(' , ')} )`;
+    return `${nm(i, j)} = ${body} = <b>${best}</b>${tie}`;
+  }
+
+  function showExplainDefault() {
+    if (k === 0) { elX.innerHTML = '<span class="muted">Empty matrix. Click a cell, click a row label, or press → to start.</span>'; return; }
+    const idx = k - 1;
+    elX.innerHTML = explainFor(Math.floor(idx / (n + 1)), idx % (n + 1));
+  }
+
+  function clearPreds() {
+    for (const g of elM.querySelectorAll('g.cell.pred')) g.classList.remove('pred');
+  }
+
+  function hoverCell(i, j) {
+    clearPreds();
+    for (const d of DIRS) {
+      const [pi, pj] = pred(i, j, d);
+      if (pi >= 0 && pj >= 0 && cellEls[pi] && cellEls[pi][pj]) cellEls[pi][pj].classList.add('pred');
+    }
+    const idx = idxOf(i, j);
+    if (idx <= k) elX.innerHTML = explainFor(i, j) + (idx === k ? ' <span class="muted">(next cell)</span>' : '');
+    else elX.innerHTML = `<span class="muted">D[${i}][${j}] not computed yet — its predecessors are not all filled.</span>`;
+  }
+
+  // events
+  elM.addEventListener('click', e => {
+    const g = e.target.closest('g.cell');
+    if (g) { setK(idxOf(+g.dataset.i, +g.dataset.j) + 1); return; }
+    const h = e.target.closest('g.rowhdr');
+    if (h) setK((+h.dataset.row + 1) * (n + 1));
+  });
+  elM.addEventListener('mouseover', e => {
+    const g = e.target.closest('g.cell');
+    if (g) hoverCell(+g.dataset.i, +g.dataset.j);
+  });
+  elM.addEventListener('mouseout', e => {
+    const g = e.target.closest('g.cell');
+    if (g && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('g.cell'))) {
+      clearPreds(); showExplainDefault();
+    }
+  });
+  elM.addEventListener('mouseleave', () => { clearPreds(); showExplainDefault(); });
+
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnFill').addEventListener('click', () => setK(total));
+  $('btnReset').addEventListener('click', () => setK(0));
+  chk.addEventListener('change', render);
+  elA.addEventListener('input', rebuild);
+  elB.addEventListener('input', rebuild);
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(total); break;
+      case 'r': case 'R': setK(0); break;
+      case 't': case 'T': if (!chk.disabled) { chk.checked = !chk.checked; render(); } break;
+    }
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>
