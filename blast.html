@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLAST Seed-and-Extend Demo</title>
+<style>
+  :root {
+    --w0bg: #fde3d0; --w0: #c65a11;
+    --w1bg: #e5d9f2; --w1: #6a3aa0;
+    --seed: #1e6fd9; --seedbg: #d6e6fb;
+    --cur: #e6a800; --curbg: #fff3c4;
+    --best: #d62828; --bestbg: #fde0e0;
+    --ext: #3a3f4b;
+    --miss: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  .controls input[type=text], .controls select {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem;
+    text-transform: uppercase; padding: 4px 6px;
+  }
+  #ref { width: 62ch; max-width: 100%; letter-spacing: .05em; }
+  #qry { width: 20ch; letter-spacing: .1em; }
+  select { text-transform: none !important; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 10px; font-size: .9rem; }
+  .tabs button { padding: 3px 12px; font-size: .9rem; border-radius: 14px; border: 1px solid #bbb; background: #f6f6f6; }
+  .tabs button.on { background: var(--seed); border-color: var(--seed); color: #fff; font-weight: 600; }
+  .tabs button.past { background: #e4eefb; border-color: var(--seed); color: var(--seed); }
+  .tabs .sep { color: #aaa; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 10px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  #explain .mono { font-weight: 600; }
+  .muted { color: #888; }
+  .c-seed { color: var(--seed); } .c-best { color: var(--best); } .c-miss { color: var(--miss); }
+  .c-w0 { color: var(--w0); } .c-w1 { color: var(--w1); }
+
+  #matrix { overflow-x: auto; padding-bottom: 4px; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .ruler text { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; }
+  .ruler line { stroke: #bbb; }
+  .rc rect { fill: #f4f4f4; stroke: #ccc; }
+  .rc.w0 rect { fill: var(--w0bg); } .rc.w1 rect { fill: var(--w1bg); }
+  .rc.w0 text { fill: var(--w0); } .rc.w1 text { fill: var(--w1); }
+  .rc.seed rect { fill: var(--seedbg); stroke: var(--seed); stroke-width: 1.5; }
+  .rc.curseed rect { fill: var(--curbg); stroke: var(--cur); stroke-width: 2; }
+  .rc text { font: 700 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #222; }
+  .curword { fill: none; stroke: #222; stroke-width: 2; }
+  .win { fill: none; stroke: var(--ext); stroke-width: 2; }
+  .win.cur { stroke: var(--cur); stroke-width: 3; }
+  .win.best { stroke: var(--best); stroke-width: 3; }
+  .qlab text { font: 700 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #222; }
+  .qlab.cur text { fill: var(--cur); }
+  .qlab rect { fill: #f4f4f4; stroke: #ccc; }
+  .qlab.cur rect { fill: var(--curbg); stroke: var(--cur); stroke-width: 1.5; }
+  .grid rect { fill: #fff; stroke: #e6e6e6; }
+  .dot { fill: #c8c8c8; }
+  .seedline { stroke: var(--seed); stroke-width: 6; stroke-linecap: round; opacity: .55; }
+  .seedline.cur { stroke: var(--cur); opacity: 1; }
+  .ext { stroke: var(--ext); stroke-width: 1.5; }
+  .ext.cur { stroke: var(--cur); stroke-width: 2.5; }
+  .ext.best { stroke: var(--best); stroke-width: 2.5; }
+  .ext.dim { opacity: .3; }
+  .mk { stroke: var(--ext); stroke-width: 1.5; fill: var(--ext); }
+  .mk.miss { fill: #fff; }
+  .mk.cur { stroke: var(--cur); fill: var(--cur); } .mk.cur.miss { fill: #fff; }
+  .mk.best { stroke: var(--best); fill: var(--best); } .mk.best.miss { fill: #fff; }
+  .mk.dim { opacity: .3; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 0; color: #444; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+  .legend .ln { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 3px solid; }
+  .legend .dotl { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+
+  .two { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 2fr); gap: 0 28px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  #dict { columns: 12em; column-gap: 1.5em; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; line-height: 1.55; }
+  #dict div { break-inside: avoid; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+  #dict div.cur { background: var(--curbg); outline: 1.5px solid var(--cur); }
+  #dict div.hit { background: var(--seedbg); }
+  #dict .tick { color: var(--seed); }
+  #dict .pos { color: #444; }
+  #kmers { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; line-height: 1.55; }
+  #kmers div { padding: 0 4px; border-radius: 3px; }
+  #kmers div.cur { background: var(--curbg); outline: 1.5px solid var(--cur); }
+  #kmers .x { color: var(--miss); font-weight: 700; }
+  #kmers .arrow { color: #888; }
+  .qrow { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.05rem; letter-spacing: .1em; margin-bottom: 4px; }
+  .qrow span { display: inline-block; width: 1.1em; text-align: center; border-radius: 3px; }
+  .qrow span.cur { background: var(--curbg); outline: 1.5px solid var(--cur); }
+
+  #hits { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .card { border: 1.5px solid #ccc; border-radius: 8px; padding: 8px 12px; min-width: 240px; background: #fafafa; }
+  .card.cur { border-color: var(--cur); box-shadow: 0 0 0 2px var(--curbg); }
+  .card.best { border-color: var(--best); background: #fff7f7; }
+  .card.dim { opacity: .45; }
+  .card.out { background: #f3f3f3; color: #777; }
+  .card-h { font-size: .85rem; color: #555; margin-bottom: 4px; }
+  .card pre { margin: 4px 0; font: 15px/1.35 ui-monospace, Menlo, Consolas, monospace; }
+  .card pre .m { color: #222; } .card pre .x { color: var(--miss); font-weight: 700; }
+  .card pre .bar { color: var(--ext); }
+  .card-f { font-size: .9rem; }
+  .badge { display: inline-block; background: var(--best); color: #fff; font-size: .75rem; padding: 1px 8px; border-radius: 10px; margin-left: 6px; vertical-align: 1px; font-weight: 600; }
+  .empty { color: #888; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>BLAST-like alignment: seed and extend</h1>
+
+<div class="controls">
+  <label>Reference <input type="text" id="ref" value="TGGCGTAGCTCAGATCAACGTTTGTCATTGGCATATATA" maxlength="80" spellcheck="false" autocomplete="off"></label>
+  <label>Query <input type="text" id="qry" value="ACGTAT" maxlength="20" spellcheck="false" autocomplete="off"></label>
+  <label>Word size k <select id="selK"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+  <label>Reference words <select id="selStride"><option value="k" selected>non-overlapping (stride k)</option><option value="1">every position (stride 1)</option></select></label>
+  <label><input type="checkbox" id="chkDots" checked> Show all matching cells</label>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnStage" title="Jump to the end of the current stage (n)">Next stage ▶▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Clear (r)">Reset</button>
+</div>
+
+<p class="hint">
+  <b>1 Index:</b> cut the reference into words of k letters and record where each word occurs (the dictionary).
+  <b>2 Look up:</b> take every k-letter window of the query and look it up; a hit is a <em>seed</em>.
+  <b>3 Extend:</b> a seed fixes where the query sits on the reference (one diagonal of the alignment matrix), so place the
+  whole query there and compare letter by letter, gap-free. <b>4 Best hit:</b> keep the placement with the most matches.
+  Full DP would compare every reference letter with every query letter; seeds let BLAST look at a handful of diagonals only.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>n</kbd> next stage, <kbd>f</kbd> run all, <kbd>r</kbd> reset.
+</p>
+
+<div class="tabs" id="tabs"></div>
+
+<h2>Reference (top) and alignment matrix (query down the side)</h2>
+<div id="matrix"></div>
+<div class="legend">
+  <span><span class="box" style="background:var(--w0bg)"></span><span class="box" style="background:var(--w1bg)"></span>indexed reference words</span>
+  <span><span class="box" style="background:var(--seedbg);border-color:var(--seed)"></span>seed (query word found in the dictionary)</span>
+  <span><span class="dotl" style="background:#c8c8c8"></span>matching letter pair (what a full DP would examine)</span>
+  <span><span class="ln" style="border-color:var(--seed);opacity:.6"></span>seed diagonal</span>
+  <span><span class="ln" style="border-color:var(--ext)"></span>end-to-end extension, ● match ○ mismatch</span>
+  <span><span class="ln" style="border-color:var(--best)"></span>best hit</span>
+</div>
+
+<div class="two">
+  <div>
+    <h2>Dictionary: word → reference positions (1-based)</h2>
+    <div id="dict"></div>
+  </div>
+  <div>
+    <h2>Query words</h2>
+    <div class="qrow" id="qrow"></div>
+    <div id="kmers"></div>
+  </div>
+</div>
+
+<h2>Hits: gap-free end-to-end placements</h2>
+<div id="hits"></div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const elRef = $('ref'), elQry = $('qry'), selK = $('selK'), selStride = $('selStride'), chkDots = $('chkDots');
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clean = (s, max) => s.toUpperCase().replace(/\s+/g, '').slice(0, max);
+  const setStr = a => '{' + a.join(', ') + '}';
+
+  let R = '', Q = '', K = 3, STRIDE = 3, Mo = null, s = 0;
+
+  // Pure model: everything the page shows is derived from this and the step index.
+  function buildSteps(R, Q, k, stride) {
+    const L = R.length, M = Q.length;
+    const words = [];
+    for (let p = 0; p + k <= L; p += stride) words.push({ pos: p + 1, word: R.substr(p, k), color: words.length % 2 });
+    const dict = new Map();
+    words.forEach((w, i) => { if (!dict.has(w.word)) dict.set(w.word, { positions: [], firstStep: i + 1 }); dict.get(w.word).positions.push(w.pos); });
+    const sortedKeys = [...dict.keys()].sort();
+    const qmers = [];
+    for (let o = 0; o + k <= M; o++) {
+      const w = Q.substr(o, k);
+      qmers.push({ off: o, word: w, positions: dict.has(w) ? dict.get(w).positions : null });
+    }
+    const hitMap = new Map();
+    qmers.forEach((q, qi) => {
+      if (!q.positions) return;
+      for (const p of q.positions) {
+        const start = p - q.off;
+        if (!hitMap.has(start)) hitMap.set(start, { start, seeds: [] });
+        hitMap.get(start).seeds.push({ qi, off: q.off, pos: p, word: q.word });
+      }
+    });
+    const hits = [...hitMap.values()].sort((a, b) => a.start - b.start);
+    hits.forEach((h, i) => {
+      h.idx = i;
+      h.end = h.start + M - 1;
+      h.inRange = h.start >= 1 && h.end <= L;
+      h.window = h.inRange ? R.substr(h.start - 1, M) : null;
+      h.match = h.inRange ? [...Q].map((c, t) => c === h.window[t]) : null;
+      h.nMatch = h.inRange ? h.match.filter(Boolean).length : 0;
+      h.firstQi = Math.min(...h.seeds.map(x => x.qi));
+    });
+    const valid = hits.filter(h => h.inRange);
+    const maxMatch = valid.length ? Math.max(...valid.map(h => h.nMatch)) : -1;
+    const best = valid.filter(h => h.nMatch === maxMatch);
+    const steps = [];
+    words.forEach((w, i) => steps.push({ stage: 'index', wi: i }));
+    if (words.length) steps.push({ stage: 'index', sort: true });
+    qmers.forEach((q, i) => steps.push({ stage: 'lookup', qi: i }));
+    hits.forEach((h, i) => steps.push({ stage: 'extend', hi: i }));
+    steps.push({ stage: 'best' });
+    const idxEnd = words.length ? words.length + 1 : 0;
+    const lookupEnd = idxEnd + qmers.length, extendEnd = lookupEnd + hits.length;
+    const nSeeds = qmers.reduce((a, q) => a + (q.positions ? q.positions.length : 0), 0);
+    return { L, M, k, stride, words, dict, sortedKeys, qmers, hits, best, maxMatch, steps, idxEnd, lookupEnd, extendEnd, nSeeds };
+  }
+
+  function rebuild() {
+    R = clean(elRef.value, 80); Q = clean(elQry.value, 20);
+    K = +selK.value; STRIDE = selStride.value === '1' ? 1 : K;
+    Mo = buildSteps(R, Q, K, STRIDE);
+    s = 0;
+    render();
+  }
+  const S = () => Mo.steps.length;
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); render(); };
+  const stageEnd = st => ({ index: Mo.idxEnd, lookup: Mo.lookupEnd, extend: Mo.extendEnd, best: S() })[st];
+  const stageStart = st => ({ index: Mo.words.length ? 1 : 0, lookup: Mo.idxEnd + 1, extend: Mo.lookupEnd + 1, best: S() })[st];
+  const STAGES = ['index', 'lookup', 'extend', 'best'];
+  const STAGE_NAME = { index: '1 Index', lookup: '2 Look up', extend: '3 Extend', best: '4 Best hit' };
+
+  // ---------- rendering ----------
+  const CW = 16, CH = 16, LEFT = 34, RULER = 16, REFH = 22;
+
+  function view() {
+    // What is visible at step s.
+    const cur = s > 0 ? Mo.steps[s - 1] : null;
+    const indexed = Math.min(s, Mo.words.length);
+    const sorted = Mo.words.length > 0 && s >= Mo.idxEnd;
+    const lookedUp = Math.max(0, Math.min(s - Mo.idxEnd, Mo.qmers.length));
+    const extended = Math.max(0, Math.min(s - Mo.lookupEnd, Mo.hits.length));
+    const final = s === S();
+    return { cur, indexed, sorted, lookedUp, extended, final };
+  }
+
+  function renderMatrix(v) {
+    const { L, M } = Mo;
+    const W = LEFT + L * CW + 2, H = RULER + REFH + M * CH + 2;
+    const cx = j => LEFT + (j - 1) * CW + CW / 2;          // j: 1-based reference position
+    const cy = i => RULER + REFH + i * CH + CH / 2;          // i: 0-based query index
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+
+    // which reference cells are indexed words, seeds, current word
+    const wordOf = new Array(L + 1).fill(-1);
+    for (let i = 0; i < v.indexed; i++) { const w = Mo.words[i]; for (let t = 0; t < Mo.k; t++) wordOf[w.pos + t] = w.color; }
+    const seedPos = new Set(), curSeedPos = new Set();
+    for (let qi = 0; qi < v.lookedUp; qi++) {
+      const q = Mo.qmers[qi]; if (!q.positions) continue;
+      for (const p of q.positions) for (let t = 0; t < Mo.k; t++) (v.cur && v.cur.stage === 'lookup' && v.cur.qi === qi ? curSeedPos : seedPos).add(p + t);
+    }
+
+    o += '<g class="ruler">';
+    for (let j = 1; j <= L; j++) {
+      if (j === 1 || j % 5 === 0) o += `<text x="${cx(j)}" y="10">${j}</text>`;
+      o += `<line x1="${cx(j)}" y1="${RULER - 4}" x2="${cx(j)}" y2="${RULER}"/>`;
+    }
+    o += '</g>';
+    for (let j = 1; j <= L; j++) {
+      const cls = ['rc'];
+      if (wordOf[j] >= 0) cls.push('w' + wordOf[j]);
+      if (seedPos.has(j)) cls.push('seed');
+      if (curSeedPos.has(j)) cls.push('curseed');
+      o += `<g class="${cls.join(' ')}"><rect x="${cx(j) - CW / 2}" y="${RULER}" width="${CW}" height="${REFH}"/><text x="${cx(j)}" y="${RULER + REFH / 2}">${esc(R[j - 1])}</text></g>`;
+    }
+    if (v.cur && v.cur.stage === 'index' && v.cur.wi !== undefined) {
+      const w = Mo.words[v.cur.wi];
+      o += `<rect class="curword" x="${cx(w.pos) - CW / 2}" y="${RULER}" width="${CW * Mo.k}" height="${REFH}"/>`;
+    }
+    // query labels + grid
+    for (let i = 0; i < M; i++) {
+      const isCur = v.cur && v.cur.stage === 'lookup' && i >= Mo.qmers[v.cur.qi].off && i < Mo.qmers[v.cur.qi].off + Mo.k;
+      o += `<g class="qlab${isCur ? ' cur' : ''}"><rect x="${LEFT - CW - 2}" y="${cy(i) - CH / 2}" width="${CW}" height="${CH}"/><text x="${LEFT - CW / 2 - 2}" y="${cy(i)}">${esc(Q[i])}</text></g>`;
+      o += '<g class="grid">';
+      for (let j = 1; j <= L; j++) o += `<rect x="${cx(j) - CW / 2}" y="${cy(i) - CH / 2}" width="${CW}" height="${CH}"/>`;
+      o += '</g>';
+    }
+    if (chkDots.checked) {
+      for (let i = 0; i < M; i++) for (let j = 1; j <= L; j++) if (Q[i] === R[j - 1]) o += `<circle class="dot" cx="${cx(j)}" cy="${cy(i)}" r="2.2"/>`;
+    }
+    // seeds
+    for (let qi = 0; qi < v.lookedUp; qi++) {
+      const q = Mo.qmers[qi]; if (!q.positions) continue;
+      const isCur = v.cur && v.cur.stage === 'lookup' && v.cur.qi === qi;
+      for (const p of q.positions) {
+        o += `<line class="seedline${isCur ? ' cur' : ''}" x1="${cx(p)}" y1="${cy(q.off)}" x2="${cx(p + Mo.k - 1)}" y2="${cy(q.off + Mo.k - 1)}"/>`;
+      }
+    }
+    // extensions
+    for (let hi = 0; hi < v.extended; hi++) {
+      const h = Mo.hits[hi];
+      if (!h.inRange) continue;
+      const isCur = v.cur && v.cur.stage === 'extend' && v.cur.hi === hi;
+      const isBest = v.final && Mo.best.includes(h);
+      const dim = v.final && !isBest;
+      const cls = (isBest ? ' best' : isCur ? ' cur' : '') + (dim ? ' dim' : '');
+      o += `<line class="ext${cls}" x1="${cx(h.start)}" y1="${cy(0)}" x2="${cx(h.end)}" y2="${cy(M - 1)}"/>`;
+      for (let t = 0; t < M; t++) o += `<circle class="mk${cls}${h.match[t] ? '' : ' miss'}" cx="${cx(h.start + t)}" cy="${cy(t)}" r="3.6"/>`;
+      o += `<rect class="win${cls}" x="${cx(h.start) - CW / 2}" y="${RULER}" width="${CW * M}" height="${REFH}"/>`;
+    }
+    o += '</svg>';
+    $('matrix').innerHTML = o;
+  }
+
+  function renderDict(v) {
+    const keys = v.sorted ? Mo.sortedKeys : [...new Set(Mo.words.slice(0, v.indexed).map(w => w.word))];
+    const shown = new Set(Mo.words.slice(0, v.indexed).map(w => w.word));
+    const lookedWords = new Map();
+    for (let qi = 0; qi < v.lookedUp; qi++) if (Mo.qmers[qi].positions) lookedWords.set(Mo.qmers[qi].word, qi);
+    let o = '';
+    for (const w of keys) {
+      if (!shown.has(w)) continue;
+      const e = Mo.dict.get(w);
+      const positions = v.indexed >= Mo.words.length ? e.positions : e.positions.filter(p => Mo.words.findIndex(x => x.pos === p) < v.indexed);
+      const cls = [];
+      if (v.cur && v.cur.stage === 'index' && v.cur.wi !== undefined && Mo.words[v.cur.wi].word === w) cls.push('cur');
+      if (v.cur && v.cur.stage === 'lookup' && Mo.qmers[v.cur.qi].word === w) cls.push('cur');
+      else if (lookedWords.has(w)) cls.push('hit');
+      o += `<div class="${cls.join(' ')}">${esc(w)} <span class="arrow">→</span> <span class="pos">${setStr(positions)}</span>${lookedWords.has(w) ? ' <span class="tick">✓</span>' : ''}</div>`;
+    }
+    if (!o) o = `<div class="empty">${Mo.words.length ? 'empty — step to index the first word' : `reference shorter than k = ${Mo.k}; nothing to index`}</div>`;
+    $('dict').innerHTML = o;
+  }
+
+  function renderQuery(v) {
+    const curQ = v.cur && v.cur.stage === 'lookup' ? Mo.qmers[v.cur.qi] : null;
+    $('qrow').innerHTML = [...Q].map((c, i) => `<span class="${curQ && i >= curQ.off && i < curQ.off + Mo.k ? 'cur' : ''}">${esc(c)}</span>`).join('') || '<span class="empty">empty query</span>';
+    let o = '';
+    Mo.qmers.forEach((q, qi) => {
+      const done = qi < v.lookedUp, isCur = curQ === q;
+      let res = '<span class="muted">?</span>';
+      if (done) res = q.positions ? `<span class="c-seed">${setStr(q.positions)}</span>` : '<span class="x">✕</span> <span class="muted">absent</span>';
+      o += `<div class="${isCur ? 'cur' : ''}">${String(q.off + 1).padStart(2)}–${String(q.off + Mo.k).padEnd(2)} ${esc(q.word)} <span class="arrow">→</span> ${res}</div>`;
+    });
+    if (!Mo.qmers.length) o = `<div class="empty">query shorter than k = ${Mo.k}; no words to look up</div>`;
+    $('kmers').innerHTML = o;
+  }
+
+  function renderHits(v) {
+    let o = '';
+    for (let hi = 0; hi < v.extended; hi++) {
+      const h = Mo.hits[hi];
+      const isCur = v.cur && v.cur.stage === 'extend' && v.cur.hi === hi;
+      const isBest = v.final && Mo.best.includes(h);
+      const cls = ['card']; if (isCur) cls.push('cur'); if (isBest) cls.push('best'); if (v.final && !isBest) cls.push('dim'); if (!h.inRange) cls.push('out');
+      const seeds = h.seeds.map(x => `<span class="c-seed mono">${esc(x.word)}</span> (query ${x.off + 1}–${x.off + Mo.k} ↔ ref ${x.pos}–${x.pos + Mo.k - 1})`).join(', ');
+      o += `<div class="${cls.join(' ')}"><div class="card-h">Diagonal: query starts at reference ${h.start} · seed${h.seeds.length > 1 ? 's' : ''}: ${seeds}${isBest ? '<span class="badge">Best hit</span>' : ''}</div>`;
+      if (h.inRange) {
+        const refLine = [...h.window].map((c, t) => `<span class="${h.match[t] ? 'm' : 'x'}">${esc(c)}</span>`).join('');
+        const bars = h.match.map(b => b ? '|' : '·').join('');
+        o += `<pre>ref ${String(h.start).padStart(3)} ${refLine} ${h.end}\n        <span class="bar">${bars}</span>\nqry   1 ${esc(Q)} ${Mo.M}</pre>`;
+        o += `<div class="card-f"><b>${h.nMatch} / ${Mo.M}</b> matches, ${Mo.M - h.nMatch} mismatch${Mo.M - h.nMatch === 1 ? '' : 'es'}</div>`;
+      } else {
+        o += `<div class="card-f">query would occupy reference ${h.start}–${h.end}, outside 1–${Mo.L}: cannot be placed end-to-end, skipped</div>`;
+      }
+      o += '</div>';
+    }
+    if (!o) o = `<div class="empty">${v.lookedUp < Mo.qmers.length || s === 0 ? 'hits appear after the look-up stage' : Mo.hits.length ? 'step to extend the first seed' : 'no seeds, nothing to extend'}</div>`;
+    $('hits').innerHTML = o;
+  }
+
+  function renderTabs(v) {
+    const curStage = v.cur ? v.cur.stage : null;
+    const ci = curStage ? STAGES.indexOf(curStage) : -1;
+    let o = '<span class="muted">Stages:</span>';
+    STAGES.forEach((st, i) => {
+      const cls = i === ci ? 'on' : i < ci ? 'past' : '';
+      o += `${i ? '<span class="sep">›</span>' : ''}<button class="${cls}" data-stage="${st}" title="Jump to the start of this stage">${STAGE_NAME[st]}</button>`;
+    });
+    $('tabs').innerHTML = o;
+  }
+
+  function explain(v) {
+    const c = v.cur, k = Mo.k;
+    if (!c) return `<span class="muted">Nothing done yet. Reference has ${Mo.L} letters, query ${Mo.M}. A full DP would fill ${Mo.L} × ${Mo.M} = ${Mo.L * Mo.M} cells. Press → to start indexing.</span>`;
+    if (c.stage === 'index') {
+      if (c.sort) return `All ${Mo.words.length} reference words are indexed (${Mo.dict.size} distinct). Sort the dictionary so a word can be found by binary search, or use a hash table for O(1) look-up. This is done once per reference and reused for every query.`;
+      const w = Mo.words[c.wi], e = Mo.dict.get(w.word);
+      const dup = e.positions[0] !== w.pos;
+      return `Index word ${c.wi + 1} of ${Mo.words.length}: reference ${w.pos}–${w.pos + k - 1} = <span class="mono c-w${w.color}">${esc(w.word)}</span> → ` +
+        (dup ? `<span class="mono">${esc(w.word)}</span> is already in the dictionary; append position ${w.pos}.` : `new dictionary entry <span class="mono">${esc(w.word)} → {${w.pos}}</span>.`);
+    }
+    if (c.stage === 'lookup') {
+      const q = Mo.qmers[c.qi];
+      const head = `Query word ${c.qi + 1} of ${Mo.qmers.length}: query ${q.off + 1}–${q.off + k} = <span class="mono">${esc(q.word)}</span> → `;
+      if (!q.positions) return head + `<span class="c-miss"><b>✕ not in the dictionary</b></span>; no seed from this word.`;
+      const diags = q.positions.map(p => `${p} − ${q.off} = <b>${p - q.off}</b>`).join(', ');
+      return head + `found at <span class="c-seed"><b>${setStr(q.positions)}</b></span>. Query letter ${q.off + 1} sits on reference letter p, so the query would start at reference position ${diags}. Each is one diagonal to examine.`;
+    }
+    if (c.stage === 'extend') {
+      const h = Mo.hits[c.hi];
+      const seedTxt = h.seeds.map(x => `<span class="mono c-seed">${esc(x.word)}</span>@${x.pos}`).join(' and ');
+      if (!h.inRange) return `Extend seed ${seedTxt}: the query would occupy reference ${h.start}–${h.end}, which runs outside the reference (1–${Mo.L}). It cannot be placed end-to-end without gaps, so this hit is skipped.`;
+      const multi = h.seeds.length > 1 ? ` (${h.seeds.length} seeds on the same diagonal give the same placement, so it is checked only once)` : '';
+      return `Extend seed ${seedTxt}${multi}: place the whole query on reference ${h.start}–${h.end} and compare letter by letter with no gaps → <b>${h.nMatch} / ${Mo.M}</b> matches. Only ${Mo.M} comparisons, versus ${Mo.L * Mo.M} cells for a full DP.`;
+    }
+    // best
+    if (!Mo.qmers.length) return `<span class="c-miss">The query is shorter than k = ${k}; there are no query words to look up.</span> Use a smaller k.`;
+    if (!Mo.hits.length) return `<span class="c-miss"><b>No seed hit.</b></span> No query word occurs among the indexed reference words, so BLAST reports nothing, even if a decent alignment exists. Try “every position (stride 1)” or a smaller k to make seeding more sensitive.`;
+    if (!Mo.best.length) return `<span class="c-miss"><b>No usable hit.</b></span> All ${Mo.hits.length} seeded placements run outside the reference.`;
+    const b = Mo.best[0];
+    const ties = Mo.best.length > 1 ? ` Tie: ${Mo.best.length} placements share this score (reference starts ${Mo.best.map(x => x.start).join(', ')}).` : '';
+    const skipped = Mo.hits.length - Mo.hits.filter(x => x.inRange).length;
+    return `<span class="c-best"><b>Best hit:</b></span> query on reference <b>${b.start}–${b.end}</b> (<span class="mono">${esc(b.window)}</span>) with <b>${b.nMatch} / ${Mo.M}</b> matches.${ties} ` +
+      `${Mo.nSeeds} seed${Mo.nSeeds === 1 ? '' : 's'} on ${Mo.hits.length} diagonal${Mo.hits.length === 1 ? '' : 's'}${skipped ? ` (${skipped} skipped as out of range)` : ''}; ` +
+      `${Mo.hits.filter(x => x.inRange).length * Mo.M} letter comparisons instead of ${Mo.L * Mo.M}.`;
+  }
+
+  function render() {
+    const v = view();
+    renderTabs(v); renderMatrix(v); renderDict(v); renderQuery(v); renderHits(v);
+    const stName = v.cur ? STAGE_NAME[v.cur.stage].replace(/^\d /, '') : 'start';
+    $('status').innerHTML = `Stage: <b>${stName}</b> · step ${s} / ${S()} · ${v.indexed} of ${Mo.words.length} words indexed · ${v.lookedUp} of ${Mo.qmers.length} query words looked up · ${v.extended} of ${Mo.hits.length} hits extended`;
+    $('explain').innerHTML = explain(v);
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------- events ----------
+  const nextStage = () => {
+    const c = s > 0 ? Mo.steps[s - 1] : null;
+    if (!c) { setS(stageEnd('index') || stageEnd('lookup') || S()); return; }
+    const e = stageEnd(c.stage);
+    if (s < e) setS(e);
+    else { const i = STAGES.indexOf(c.stage); setS(i + 1 < STAGES.length ? stageEnd(STAGES[i + 1]) : S()); }
+  };
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnStage').addEventListener('click', nextStage);
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-stage]');
+    if (b) setS(stageStart(b.dataset.stage));
+  });
+  chkDots.addEventListener('change', render);
+  for (const el of [elRef, elQry]) el.addEventListener('input', rebuild);
+  for (const el of [selK, selStride]) el.addEventListener('change', rebuild);
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'n': case 'N': nextStage(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+    }
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>
