@@ -68,6 +68,8 @@
   .node { cursor: pointer; }
   .node.sel ellipse { stroke: #7b3fa0; stroke-width: 3; }
   .node.sel text { fill: #7b3fa0; font-weight: 700; }
+  .node.same ellipse { stroke: #7b3fa0; stroke-width: 2; stroke-dasharray: 4 2; }
+  .node.same text { fill: #7b3fa0; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; margin: 0 0 6px; color: #444; }
   .legend .box { display: inline-block; width: 13px; height: 13px; border-radius: 50%; vertical-align: -2px; margin-right: 5px; border: 1.5px solid #333; }
@@ -369,7 +371,11 @@
         if (hitN.has(nd.id)) cls.push('hit');
         if (curId === nd.id) cls.push('cur');
       }
-      if (selId !== null && (nd.id === selId || (nd.isCaret && nd.parent.id === selId))) cls.push('sel');
+      if (selId !== null) {
+        const selNd = Idx.nodes.get(selId);
+        if (nd.id === selId || (nd.isCaret && nd.parent.id === selId)) cls.push('sel');
+        else if (selNd && nd.k === selNd.k && nd.l === selNd.l) cls.push('same');
+      }
       const title = nd.isCaret ? `^${esc(nd.W)}: ${esc(nd.W)} is a prefix of T` : nd.W ? `"${esc(nd.W)}" occurs at SA rows ${nd.k}..${nd.l}` : 'root: empty string, all rows';
       nodesOut += `<g class="${cls.join(' ')}" data-id="${esc(nd.isCaret ? nd.parent.id : nd.id)}"><title>${title}</title><ellipse cx="${cx(nd)}" cy="${cy(nd)}" rx="${RX}" ry="${RY}"/><text x="${cx(nd)}" y="${cy(nd)}">${nd.k},${nd.l}</text>`;
       if (!nd.isCaret && dead.has(nd.id) && !hitN.has(nd.id)) nodesOut += `<path class="xmark" d="M${cx(nd) + RX - 4},${cy(nd) - RY - 2} l8,8 m0,-8 l-8,8"/>`;
@@ -385,8 +391,10 @@
     const hitRows = new Set();
     if (snap) snap.hits.forEach(h => { for (let r = h.k; r <= h.l; r++) hitRows.add(r); });
     const sel = selId !== null ? Idx.nodes.get(selId) : null;
+    const same = sel ? [...Idx.nodes.values()].filter(nd => !nd.isCaret && nd.id !== sel.id && nd.k === sel.k && nd.l === sel.l) : [];
     let o = sel
-      ? `<div class="selcap">Selected node <span class="mono">${sel.W ? esc(sel.W) : 'ε (root)'}</span> → rows ${sel.k}..${sel.l}, position${sel.l > sel.k ? 's' : ''} ${Idx.SA.slice(sel.k, sel.l + 1).join(', ')}</div>`
+      ? `<div class="selcap">Selected node <span class="mono">${sel.W ? esc(sel.W) : 'ε (root)'}</span> → rows ${sel.k}..${sel.l}, position${sel.l > sel.k ? 's' : ''} ${Idx.SA.slice(sel.k, sel.l + 1).join(', ')}` +
+        (same.length ? `; ${same.length} other node${same.length > 1 ? 's' : ''} (dashed) share${same.length > 1 ? '' : 's'} this interval: <span class="mono">${same.map(nd => esc(nd.W)).join(', ')}</span>` : '') + '</div>'
       : '<div class="selcap muted">click a trie node to highlight its interval</div>';
     o += '<table class="sa"><tr><th>row</th><th>SA</th><th>suffix</th></tr>';
     for (let r = 0; r <= Idx.n; r++) {
