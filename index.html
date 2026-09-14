@@ -46,6 +46,11 @@ type your own sequences and step through the algorithm with the buttons or the a
     <div class="desc">Index the reference into k-letter words, look up every query word, extend each seed end-to-end without gaps, and keep the placement with the most matches. Seeds and extensions are drawn as diagonals of the alignment matrix.</div>
     <div class="tags">k-mer dictionary · seed and extend · gap-free hits</div>
   </a></li>
+  <li><a href="bwa-aln.html">
+    <span class="num">4</span><span class="name">bwa-aln: backtracking on the prefix trie</span>
+    <div class="desc">Read a short query backwards through the prefix trie of the reference, where every node holds a suffix-array interval, and try mismatches from a priority stack. A precomputed lower bound D prunes hopeless branches; switch to bowtie-style mode to see the difference.</div>
+    <div class="tags">FM-index · backward search · bounded backtracking</div>
+  </a></li>
 </ol>
 
 <footer>Source: <a href="https://github.com/lh3/teach-demo">github.com/lh3/teach-demo</a>. No external dependencies; each page also works when opened as a local file.</footer>

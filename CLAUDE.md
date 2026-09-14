@@ -15,6 +15,9 @@ working when opened as a local `file://` URL.
   extend along matching diagonals), one step per phase.
 - `blast.html`: seed-and-extend over a long reference and a short query (index k-mers,
   look up, gap-free end-to-end extension, best hit).
+- `bwa-aln.html`: ungapped bwa-aln (`bwt_match_gap` without indels): prefix trie with SA
+  intervals drawn as in the slides, D-array lower bound, priority-stack backtracking, and a
+  bowtie-style mode without the bound for comparison.
 
 ## Developing and checking
 
@@ -35,12 +38,13 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
   --hide-scrollbars --window-size=1000,820 --screenshot=/tmp/t.png file:///tmp/t.html
 ```
 
-Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`) free of DOM access
+Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
+`runSearch`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
 
-All three demos follow the same pattern; keep new pages consistent with it.
+All demos follow the same pattern; keep new pages consistent with it.
 
 - **Precomputed step list, single source of truth.** On any input change, `rebuild()`
   recomputes everything (full DP, wave snapshots, or BLAST stages) and resets a step index

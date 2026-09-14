@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bwa-aln Backtracking Demo</title>
+<style>
+  :root {
+    --cur: #e6a800; --curbg: #fff3c4;
+    --stack: #1e6fd9; --stackbg: #d6e6fb;
+    --hit: #1a9e3f; --hitbg: #d9f2e0;
+    --prune: #d62828; --prunebg: #fde0e0;
+    --done: #d0d0d0;
+    --b0: #fde3d0; --b1: #e5d9f2; --b2: #d6e6fb; --b3: #d9f2e0;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1400px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 16px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  .controls input[type=text], .controls select {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem;
+    text-transform: uppercase; padding: 4px 6px;
+  }
+  #ref { width: 16ch; letter-spacing: .1em; } #qry { width: 12ch; letter-spacing: .1em; }
+  select { text-transform: none !important; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 10px; font-size: .9rem; }
+  .tabs button { padding: 3px 12px; font-size: .9rem; border-radius: 14px; border: 1px solid #bbb; background: #f6f6f6; }
+  .tabs button.on { background: var(--stack); border-color: var(--stack); color: #fff; font-weight: 600; }
+  .tabs button.past { background: #e4eefb; border-color: var(--stack); color: var(--stack); }
+  .tabs .sep { color: #aaa; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 4px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  #explain .mono { font-weight: 600; }
+  .muted { color: #888; }
+  .c-cur { color: #a67c00; } .c-stack { color: var(--stack); } .c-hit { color: var(--hit); } .c-prune { color: var(--prune); }
+  .mm { color: var(--prune); font-weight: 700; }
+  .ev { display: block; padding-left: 1.2em; }
+
+  #trie { overflow-x: auto; padding: 4px 0 8px; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .edge { stroke: #444; stroke-width: 1.2; fill: none; }
+  .edge.path { stroke: var(--cur); stroke-width: 3.5; }
+  .edge.epath { stroke: var(--cur); stroke-width: 3.5; stroke-dasharray: 5 3; }
+  .elab { font: 12px ui-monospace, Menlo, Consolas, monospace; fill: #222; text-anchor: middle; dominant-baseline: central; }
+  .node ellipse { fill: #fff; stroke: #333; stroke-width: 1.2; }
+  .node text { font: 11px ui-monospace, Menlo, Consolas, monospace; fill: #222; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .node.expanded ellipse { fill: #ececec; }
+  .node.onstack ellipse { fill: var(--stackbg); stroke: var(--stack); stroke-width: 2; }
+  .node.pruned ellipse { fill: var(--prunebg); stroke: var(--prune); stroke-width: 2; stroke-dasharray: 4 3; }
+  .node.dead ellipse { stroke: var(--prune); stroke-width: 2; }
+  .node.hit ellipse { fill: var(--hitbg); stroke: var(--hit); stroke-width: 2.5; }
+  .node.epath ellipse { fill: var(--curbg); stroke: var(--cur); stroke-width: 2; }
+  .node.cur ellipse { fill: var(--curbg); stroke: #000; stroke-width: 3; }
+  .node.hit.cur ellipse { fill: var(--hitbg); stroke: var(--hit); stroke-width: 3.5; }
+  .node.pruned.cur ellipse { fill: var(--prunebg); stroke: var(--prune); stroke-width: 3; stroke-dasharray: none; }
+  .xmark { stroke: var(--prune); stroke-width: 2.5; }
+  .node { cursor: pointer; }
+  .node.sel ellipse { stroke: #7b3fa0; stroke-width: 3; }
+  .node.sel text { fill: #7b3fa0; font-weight: 700; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; margin: 0 0 6px; color: #444; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; border-radius: 50%; vertical-align: -2px; margin-right: 5px; border: 1.5px solid #333; }
+
+  .main { display: grid; grid-template-columns: minmax(300px, auto) minmax(320px, 1fr); gap: 0 28px; align-items: start; }
+  .main .side h2:first-child { margin-top: 16px; }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+  table.sa { border-collapse: collapse; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; }
+  table.sa th { font-weight: 600; color: #555; text-align: left; padding: 1px 10px 3px 4px; font-family: system-ui, sans-serif; font-size: .8rem; }
+  table.sa td { padding: 1px 10px 1px 4px; white-space: nowrap; }
+  table.sa tr.cur td { background: var(--curbg); }
+  table.sa tr.hit td { background: var(--hitbg); }
+  table.sa tr.cur.hit td { background: var(--hitbg); outline: 1.5px solid var(--cur); }
+  table.sa .d { color: #999; }
+  table.sa tr.sel td { background: #e5d9f2; }
+  table.sa tr.sel.cur td, table.sa tr.sel.hit td { outline: 2px solid #7b3fa0; outline-offset: -2px; }
+  .selcap { font-size: .85rem; color: #7b3fa0; margin-bottom: 4px; min-height: 1.2em; }
+
+  .qrow { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1.1rem; display: flex; gap: 3px; }
+  .qrow span { display: inline-block; width: 1.5em; text-align: center; border-radius: 4px; border: 1px solid #ccc; background: #f4f4f4; line-height: 1.5; }
+  .qrow span.pending { color: #bbb; }
+  .qrow span.b0 { background: var(--b0); } .qrow span.b1 { background: var(--b1); } .qrow span.b2 { background: var(--b2); } .qrow span.b3 { background: var(--b3); }
+  .qrow span.cur { outline: 2px solid var(--cur); }
+  .qrow.d span { border-color: transparent; background: none; color: #333; font-weight: 600; }
+  .qrow.idx span { border-color: transparent; background: none; color: #888; font-size: .8rem; }
+  .qrow.d span.pending { color: #ccc; }
+  .lab { font-size: .8rem; color: #777; margin-top: 4px; }
+
+  table.st { border-collapse: collapse; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92rem; width: 100%; }
+  table.st th { font-weight: 600; color: #555; text-align: left; padding: 1px 8px 3px 4px; font-family: system-ui, sans-serif; font-size: .8rem; }
+  table.st td { padding: 1px 8px 1px 4px; white-space: nowrap; }
+  table.st tr.top td { background: var(--stackbg); }
+  table.st tr.popped td { background: var(--curbg); }
+  .empty { color: #888; font-size: .9rem; }
+
+  .card { border: 1.5px solid var(--hit); border-radius: 8px; padding: 6px 10px; background: #f6fcf7; margin-bottom: 8px; }
+  .card.cur { box-shadow: 0 0 0 2px var(--curbg); border-color: var(--cur); }
+  .card pre { margin: 4px 0; font: 14px/1.35 ui-monospace, Menlo, Consolas, monospace; }
+  .card .h { font-size: .85rem; color: #444; }
+</style>
+</head>
+<body>
+<h1>bwa-aln: backtracking on the prefix trie with a mismatch lower bound</h1>
+
+<div class="controls">
+  <label>Reference T <input type="text" id="ref" value="AGGAGC" maxlength="12" spellcheck="false" autocomplete="off"></label>
+  <label>Read R <input type="text" id="qry" value="CGC" maxlength="8" spellcheck="false" autocomplete="off"></label>
+  <label>Max mismatches z <select id="selZ"><option>0</option><option selected>1</option><option>2</option></select></label>
+  <label><input type="checkbox" id="chkBound"> Bounded backtrack (prune with D)</label>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnStage" title="Jump to the end of the current stage (n)">Next stage ▶▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Clear (r)">Reset</button>
+</div>
+
+<p class="hint">
+  The trie below contains every substring W of T. Following an edge labelled <span class="mono">a</span> downwards goes from W to
+  <span class="mono">aW</span>, and every node stores the suffix-array interval [k,l] of its string: exactly the O(1) backward-search
+  step of an FM-index. <span class="mono">^</span> marks that W is a prefix of T. bwa-aln reads R from its <em>last</em> letter to
+  its first, walking down the trie, and tries the other letters where a mismatch is still affordable. Before searching it computes
+  <b>D(i)</b>, a lower bound on the mismatches needed to align R[0..i]; a branch is abandoned as soon as the remaining budget
+  falls below D. Entries are kept on a priority stack, so the alignment with fewest mismatches is found first.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>n</kbd> next stage, <kbd>f</kbd> run all, <kbd>r</kbd> reset.
+</p>
+
+<div class="tabs" id="tabs"></div>
+<div id="status"></div>
+<div id="explain"></div>
+
+<div class="main">
+  <div>
+    <h2>Prefix trie of T with suffix-array intervals</h2>
+    <div class="legend">
+      <span><span class="box" style="background:var(--curbg);border-color:#000;border-width:2px"></span>current entry</span>
+      <span><span class="box" style="background:var(--stackbg);border-color:var(--stack)"></span>on the stack</span>
+      <span><span class="box" style="background:#ececec"></span>expanded</span>
+      <span><span class="box" style="background:var(--prunebg);border-color:var(--prune);border-style:dashed"></span>pruned by D</span>
+      <span><span class="box" style="background:#fff;border-color:var(--prune)"></span>✕ dead end</span>
+      <span><span class="box" style="background:var(--hitbg);border-color:var(--hit)"></span>hit</span>
+    </div>
+    <div id="trie"></div>
+  </div>
+  <div class="side">
+    <h2>Suffix array of T$</h2>
+    <div id="sa"></div>
+    <h2 id="dhead">Read R and lower bound D(i)</h2>
+    <div id="dpanel"></div>
+    <h2>Priority stack (top = next to pop)</h2>
+    <div id="stack"></div>
+    <h2>Hits</h2>
+    <div id="hits"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clean = (s, max) => s.toUpperCase().replace(/[^A-Z]/g, '').slice(0, max);
+
+  let T = '', R = '', Z = 1, USE_D = true, Idx = null, Dm = null, Sr = null, steps = [], s = 0, selId = null;
+
+  // ---------- index: suffix array + trie of all substrings (edges prepend a letter) ----------
+  function buildIndex(T) {
+    const n = T.length;
+    const SA = Array.from({ length: n + 1 }, (_, i) => i).sort((a, b) => {
+      const x = T.slice(a) + '$', y = T.slice(b) + '$';
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    const sufs = SA.map(p => T.slice(p) + '$');
+    const cache = new Map();
+    const interval = W => {           // [k,l] of rows whose suffix starts with W, or null
+      if (cache.has(W)) return cache.get(W);
+      let k = -1, l = -1;
+      for (let r = 0; r <= n; r++) if (sufs[r].startsWith(W)) { if (k < 0) k = r; l = r; }
+      const iv = k < 0 ? null : [k, l];
+      cache.set(W, iv); return iv;
+    };
+    const alpha = [...new Set(T)].sort();
+    const nodes = new Map();
+    const root = { id: '', W: '', k: 0, l: n, depth: 0, children: [], parent: null, label: '' };
+    nodes.set('', root);
+    const queue = [root];
+    while (queue.length) {
+      const nd = queue.shift();
+      if (nd.W && T.startsWith(nd.W)) {   // '^' leaf: W is a prefix of T (drawn as in the slides, same interval)
+        const leaf = { id: '^' + nd.W, W: nd.W, k: nd.k, l: nd.l, depth: nd.depth + 1, children: [], parent: nd, label: '^', isCaret: true };
+        nodes.set(leaf.id, leaf); nd.children.push(leaf);
+      }
+      for (const a of alpha) {
+        const W2 = a + nd.W, iv = interval(W2);
+        if (!iv) continue;
+        const ch = { id: W2, W: W2, k: iv[0], l: iv[1], depth: nd.depth + 1, children: [], parent: nd, label: a };
+        nodes.set(W2, ch); nd.children.push(ch); queue.push(ch);
+      }
+    }
+    // tidy layout: leaves get consecutive slots, parents centred over children
+    let slot = 0, maxDepth = 0;
+    const place = nd => {
+      maxDepth = Math.max(maxDepth, nd.depth);
+      if (!nd.children.length) { nd.x = slot++; return; }
+      nd.children.forEach(place);
+      nd.x = (nd.children[0].x + nd.children[nd.children.length - 1].x) / 2;
+    };
+    place(root);
+    return { T, n, SA, sufs, interval, alpha, nodes, root, nLeaves: slot, maxDepth };
+  }
+
+  // ---------- D array: greedy segmentation of R into substrings of T (bwa does it with the BWT of the reversed T) ----------
+  function calcD(T, R) {
+    const D = [], block = [], dsteps = [];
+    let z = 0, j = 0;
+    for (let i = 0; i < R.length; i++) {
+      const sub = R.slice(j, i + 1), ok = T.length > 0 && T.includes(sub);
+      if (!ok) { z++; dsteps.push({ i, sub, ok, z, j }); block[i] = z - 1; j = i + 1; }
+      else { dsteps.push({ i, sub, ok, z, j }); block[i] = z; }
+      D[i] = z;
+    }
+    return { D, block, dsteps };
+  }
+
+  // ---------- ungapped bwt_match_gap: priority stack, best score first, LIFO within a score ----------
+  function runSearch(Idx, R, z, useD, D) {
+    const L = R.length, n = Idx.n, alpha = Idx.alpha;
+    const stacks = Array.from({ length: z + 1 }, () => []);
+    let nEntries = 0, pops = 0;
+    const push = e => { stacks[e.mm].push(e); nEntries++; };
+    const pop = () => { for (const st of stacks) if (st.length) { nEntries--; return st.pop(); } return null; };
+    const snaps = [], hits = [];
+    const expanded = new Set(), pruned = new Set(), hitNodes = new Set(), dead = new Set();
+    const mkHit = e => ({ W: e.W, k: e.k, l: e.l, mm: e.mm, mmPos: e.mmPos, positions: Idx.SA.slice(e.k, e.l + 1), order: hits.length + 1 });
+    if (L > 0 && n > 0) push({ i: L, k: 0, l: n, mm: 0, W: '', mmPos: [] });
+    while (nEntries && pops < 3000) {
+      const e = pop(); pops++;
+      const m = z - e.mm;
+      const snap = { entry: e, m, events: [], pops };
+      if (useD && e.i > 0 && m < D[e.i - 1]) {
+        snap.action = 'pruneD'; pruned.add(e.W);
+      } else if (e.i === 0) {
+        snap.action = 'hit'; const h = mkHit(e); hits.push(h); hitNodes.add(e.W); snap.hit = h;
+      } else if (m === 0) {                      // no mismatch left: bwt_match_exact_alt on the remaining prefix
+        snap.action = 'exact';
+        let W = e.W, k = e.k, l = e.l, ok = true;
+        const path = [];
+        for (let i = e.i - 1; i >= 0; i--) {
+          const W2 = R[i] + W, iv = Idx.interval(W2);
+          if (!iv) { ok = false; snap.failW = W2; snap.failI = i; break; }
+          W = W2; [k, l] = iv; path.push(W);
+        }
+        snap.exactPath = path; snap.exactOk = ok;
+        path.slice(0, ok ? path.length - 1 : path.length).forEach(w => expanded.add(w));
+        if (!ok && !path.length) expanded.add(e.W);
+        if (ok) { const h = mkHit({ W, k, l, mm: e.mm, mmPos: e.mmPos }); hits.push(h); hitNodes.add(W); snap.hit = h; }
+        else dead.add(path.length ? path[path.length - 1] : e.W);
+      } else {
+        snap.action = 'expand'; expanded.add(e.W);
+        const i = e.i - 1, c0 = R[i];
+        const allowDiff = !useD || i === 0 || D[i - 1] <= m - 1;
+        snap.i = i; snap.c0 = c0; snap.allowDiff = allowDiff;
+        const order = alpha.filter(a => a !== c0).concat(alpha.includes(c0) ? [c0] : []);
+        for (const a of order) {
+          const isMM = a !== c0, W2 = a + e.W, iv = Idx.interval(W2);
+          if (isMM && !allowDiff) { if (iv) pruned.add(W2); snap.events.push({ a, W2, status: 'disallowed', exists: !!iv }); continue; }
+          if (!iv) { snap.events.push({ a, W2, status: 'empty', isMM }); continue; }
+          const mm = e.mm + (isMM ? 1 : 0);
+          push({ i, k: iv[0], l: iv[1], mm, W: W2, mmPos: isMM ? [i, ...e.mmPos] : e.mmPos });
+          snap.events.push({ a, W2, status: 'pushed', isMM, k: iv[0], l: iv[1], mm });
+        }
+        if (!alpha.includes(c0)) snap.events.push({ a: c0, status: 'notInT' });
+        if (!snap.events.some(ev => ev.status === 'pushed')) dead.add(e.W);
+      }
+      snap.stack = stacks.flatMap(st => [...st].reverse());
+      snap.hits = hits.slice(); snap.expanded = [...expanded]; snap.pruned = [...pruned];
+      snap.hitNodes = [...hitNodes]; snap.dead = [...dead];
+      snaps.push(snap);
+    }
+    return { snaps, hits, pops };
+  }
+
+  function rebuild() {
+    T = clean($('ref').value, 12); R = clean($('qry').value, 8);
+    Z = +$('selZ').value; USE_D = $('chkBound').checked;
+    Idx = buildIndex(T); Dm = calcD(T, R); Sr = runSearch(Idx, R, Z, USE_D, Dm.D);
+    steps = [];
+    if (USE_D) Dm.dsteps.forEach((d, i) => steps.push({ stage: 'D', di: i }));
+    Sr.snaps.forEach((sn, i) => steps.push({ stage: 'search', si: i }));
+    steps.push({ stage: 'done' });
+    s = 0; selId = null; render();
+  }
+  const S = () => steps.length;
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); render(); };
+  const STAGES = ['D', 'search', 'done'];
+  const visibleStages = () => USE_D ? STAGES : ['search', 'done'];
+  const STAGE_NAME = { D: 'Lower bound D', search: 'Backtracking search', done: 'Result' };
+  const stageLabel = st => `${visibleStages().indexOf(st) + 1} ${STAGE_NAME[st]}`;
+  const stageEnd = st => { let e = 0; steps.forEach((x, i) => { if (x.stage === st) e = i + 1; }); return e || (st === 'D' ? 0 : st === 'search' ? stageEnd('D') : S()); };
+  const stageStart = st => { const i = steps.findIndex(x => x.stage === st); return i < 0 ? S() : i + 1; };
+
+  // ---------- rendering ----------
+  const COLW = 40, ROWH = 46, PADX = 24, PADY = 20, RX = 17, RY = 12;
+
+  function view() {
+    const cur = s > 0 ? steps[s - 1] : null;
+    const nD = USE_D ? Dm.dsteps.length : 0;
+    const dDone = Math.min(s, nD);
+    const snap = cur && cur.stage === 'search' ? Sr.snaps[cur.si] : (s > nD && Sr.snaps.length ? Sr.snaps[Math.min(s - nD, Sr.snaps.length) - 1] : null);
+    const final = cur && cur.stage === 'done';
+    return { cur, dDone, snap, final, searching: cur && cur.stage === 'search' };
+  }
+
+  function fmtW(W, i0, mmPos) {   // matched text W where W[t] aligns to read position i0 + t
+    return [...W].map((c, t) => mmPos.includes(i0 + t) ? `<span class="mm">${esc(c)}</span>` : esc(c)).join('') || '<span class="muted">ε</span>';
+  }
+  const ivStr = e => `[${e.k},${e.l}]`;
+  const entryStr = e => `(i=${e.i}, ${ivStr(e)}, ${e.mm} mm, W=<span class="mono">${fmtW(e.W, e.i, e.mmPos)}</span>)`;
+
+  function renderTrie(v) {
+    const W = PADX * 2 + Math.max(1, Idx.nLeaves) * COLW, H = PADY * 2 + (Idx.maxDepth + 1) * ROWH;
+    const cx = nd => PADX + nd.x * COLW + COLW / 2, cy = nd => PADY + nd.depth * ROWH + RY;
+    const snap = v.snap;
+    const onStack = new Set(), pathEdges = new Set(), ePath = new Set();
+    let curId = null;
+    const expanded = new Set(snap ? snap.expanded : []), pruned = new Set(snap ? snap.pruned : []),
+      hitN = new Set(snap ? snap.hitNodes : []), dead = new Set(snap ? snap.dead : []);
+    if (snap) {
+      snap.stack.forEach(e => onStack.add(e.W));
+      if (v.searching) {
+        curId = snap.entry.W;
+        for (let t = 0; t < curId.length; t++) pathEdges.add(curId.slice(t));
+        if (snap.exactPath) snap.exactPath.forEach(w => ePath.add(w));
+        if (snap.action === 'hit' || (snap.action === 'exact' && snap.exactOk)) curId = snap.hit.W;
+      }
+    }
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    o += '<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#444"/></marker>' +
+      '<marker id="ahc" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#e6a800"/></marker></defs>';
+    let edges = '', nodesOut = '';
+    for (const nd of Idx.nodes.values()) {
+      if (nd.parent) {
+        const p = nd.parent, x1 = cx(p), y1 = cy(p), x2 = cx(nd), y2 = cy(nd);
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+        // start/end on the ellipse boundary (approximate with the mean radius)
+        const sx = x1 + ux * (RY + 2), sy = y1 + uy * (RY + 2), ex = x2 - ux * (RY + 3), ey = y2 - uy * (RY + 3);
+        const isPath = !nd.isCaret && pathEdges.has(nd.id), isE = !nd.isCaret && ePath.has(nd.id);
+        edges += `<line class="edge${isPath ? ' path' : isE ? ' epath' : ''}" x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" marker-end="url(#${isPath || isE ? 'ahc' : 'ah'})"/>`;
+        const mx = (sx + ex) / 2, my = (sy + ey) / 2, off = 9;
+        edges += `<text class="elab" x="${(mx - uy * off).toFixed(1)}" y="${(my + ux * off).toFixed(1)}">${esc(nd.label)}</text>`;
+      }
+      const cls = ['node'];
+      if (!nd.isCaret) {
+        if (expanded.has(nd.id)) cls.push('expanded');
+        if (onStack.has(nd.id)) cls.push('onstack');
+        if (ePath.has(nd.id)) cls.push('epath');
+        if (pruned.has(nd.id)) cls.push('pruned');
+        if (dead.has(nd.id)) cls.push('dead');
+        if (hitN.has(nd.id)) cls.push('hit');
+        if (curId === nd.id) cls.push('cur');
+      }
+      if (selId !== null && (nd.id === selId || (nd.isCaret && nd.parent.id === selId))) cls.push('sel');
+      const title = nd.isCaret ? `^${esc(nd.W)}: ${esc(nd.W)} is a prefix of T` : nd.W ? `"${esc(nd.W)}" occurs at SA rows ${nd.k}..${nd.l}` : 'root: empty string, all rows';
+      nodesOut += `<g class="${cls.join(' ')}" data-id="${esc(nd.isCaret ? nd.parent.id : nd.id)}"><title>${title}</title><ellipse cx="${cx(nd)}" cy="${cy(nd)}" rx="${RX}" ry="${RY}"/><text x="${cx(nd)}" y="${cy(nd)}">${nd.k},${nd.l}</text>`;
+      if (!nd.isCaret && dead.has(nd.id) && !hitN.has(nd.id)) nodesOut += `<path class="xmark" d="M${cx(nd) + RX - 4},${cy(nd) - RY - 2} l8,8 m0,-8 l-8,8"/>`;
+      nodesOut += '</g>';
+    }
+    o += edges + nodesOut + '</svg>';
+    $('trie').innerHTML = Idx.n ? o : '<div class="empty">empty reference</div>';
+  }
+
+  function renderSA(v) {
+    const snap = v.snap;
+    const cur = v.searching ? [snap.entry.k, snap.entry.l] : null;
+    const hitRows = new Set();
+    if (snap) snap.hits.forEach(h => { for (let r = h.k; r <= h.l; r++) hitRows.add(r); });
+    const sel = selId !== null ? Idx.nodes.get(selId) : null;
+    let o = sel
+      ? `<div class="selcap">Selected node <span class="mono">${sel.W ? esc(sel.W) : 'ε (root)'}</span> → rows ${sel.k}..${sel.l}, position${sel.l > sel.k ? 's' : ''} ${Idx.SA.slice(sel.k, sel.l + 1).join(', ')}</div>`
+      : '<div class="selcap muted">click a trie node to highlight its interval</div>';
+    o += '<table class="sa"><tr><th>row</th><th>SA</th><th>suffix</th></tr>';
+    for (let r = 0; r <= Idx.n; r++) {
+      const cls = [];
+      if (sel && r >= sel.k && r <= sel.l) cls.push('sel');
+      if (cur && r >= cur[0] && r <= cur[1]) cls.push('cur');
+      if (hitRows.has(r)) cls.push('hit');
+      o += `<tr class="${cls.join(' ')}"><td class="d">${r}</td><td>${Idx.SA[r]}</td><td>${esc(Idx.sufs[r].slice(0, -1))}<span class="d">$</span></td></tr>`;
+    }
+    o += '</table>';
+    $('sa').innerHTML = o;
+  }
+
+  function renderD(v) {
+    const cur = v.cur && v.cur.stage === 'D' ? Dm.dsteps[v.cur.di] : null;
+    let idx = '<div class="qrow idx">', q = '<div class="qrow">', d = '<div class="qrow d">';
+    for (let i = 0; i < R.length; i++) {
+      const done = i < v.dDone;
+      idx += `<span>${i}</span>`;
+      q += `<span class="${done ? 'b' + (Dm.block[i] % 4) : 'pending'}${cur && cur.i === i ? ' cur' : ''}">${esc(R[i])}</span>`;
+      d += `<span class="${done ? '' : 'pending'}">${done ? Dm.D[i] : '·'}</span>`;
+    }
+    idx += '</div>'; q += '</div>'; d += '</div>';
+    $('dhead').textContent = USE_D ? 'Read R and lower bound D(i)' : 'Read R';
+    if (!R.length) { $('dpanel').innerHTML = '<div class="empty">empty read</div>'; return; }
+    $('dpanel').innerHTML = USE_D
+      ? `<div class="lab">position i</div>${idx}${q}<div class="lab">D(i): mismatches needed at least for R[0..i]</div>${d}`
+      : `<div class="lab">position i</div>${idx}${q.replace(/ class="pending/g, ' class="')}`;
+  }
+
+  function renderStack(v) {
+    const snap = v.snap;
+    if (!snap) { $('stack').innerHTML = `<div class="empty">${R.length && Idx.n ? 'the search starts with one entry: (i=' + R.length + ', [0,' + Idx.n + '], 0 mm)' : 'nothing to search'}</div>`; return; }
+    let o = '<table class="st"><tr><th>mm</th><th>i</th><th>[k,l]</th><th>matched W</th><th>read left R[0..i−1]</th></tr>';
+    if (v.searching) {
+      const e = snap.entry;
+      o += `<tr class="popped"><td>${e.mm}</td><td>${e.i}</td><td>${ivStr(e)}</td><td>${fmtW(e.W, e.i, e.mmPos)}</td><td>${esc(R.slice(0, e.i)) || '<span class="muted">—</span>'} <span class="muted">← popped</span></td></tr>`;
+    }
+    snap.stack.forEach((e, t) => {
+      o += `<tr class="${t === 0 ? 'top' : ''}"><td>${e.mm}</td><td>${e.i}</td><td>${ivStr(e)}</td><td>${fmtW(e.W, e.i, e.mmPos)}</td><td>${esc(R.slice(0, e.i)) || '<span class="muted">—</span>'}</td></tr>`;
+    });
+    if (!snap.stack.length) o += '<tr><td colspan="5" class="muted">stack empty after this step</td></tr>';
+    o += '</table>';
+    $('stack').innerHTML = o;
+  }
+
+  function renderHits(v) {
+    const snap = v.snap;
+    const hits = snap ? snap.hits : [];
+    if (!hits.length) { $('hits').innerHTML = `<div class="empty">${v.final ? 'no alignment with ≤ ' + Z + ' mismatch' + (Z === 1 ? '' : 'es') : 'none yet'}</div>`; return; }
+    let o = '';
+    hits.forEach(h => {
+      const isCur = v.searching && snap.hit === h;
+      const readLine = [...R].map((c, i) => h.mmPos.includes(i) ? `<span class="mm">${esc(c)}</span>` : esc(c)).join('');
+      o += `<div class="card${isCur ? ' cur' : ''}"><div class="h">Hit ${h.order}: <b>${h.mm}</b> mismatch${h.mm === 1 ? '' : 'es'}, SA rows ${h.k}..${h.l} → position${h.positions.length > 1 ? 's' : ''} ${h.positions.join(', ')}</div>`;
+      h.positions.forEach(p => {
+        o += `<pre>T  ${esc(T)}\n   ${' '.repeat(p)}${esc(h.W)}   ← ${p}\nR  ${' '.repeat(p)}${readLine}</pre>`;
+      });
+      o += '</div>';
+    });
+    $('hits').innerHTML = o;
+  }
+
+  function renderTabs(v) {
+    const vs = visibleStages(), ci = v.cur ? vs.indexOf(v.cur.stage) : -1;
+    let o = '<span class="muted">Stages:</span>';
+    vs.forEach((st, i) => {
+      o += `${i ? '<span class="sep">›</span>' : ''}<button class="${i === ci ? 'on' : i < ci ? 'past' : ''}" data-stage="${st}" title="Jump to the start of this stage">${stageLabel(st)}</button>`;
+    });
+    $('tabs').innerHTML = o;
+  }
+
+  function explain(v) {
+    const c = v.cur;
+    if (!c) return `<span class="muted">Index built: suffix array of T$ (${Idx.n + 1} rows) and the trie of all ${Idx.nodes.size - [...Idx.nodes.values()].filter(x => x.isCaret).length - 1} substrings of T. Press → to ${USE_D ? 'compute D, then search' : 'start the search'}.</span>`;
+    if (c.stage === 'D') {
+      const d = Dm.dsteps[c.di];
+      const head = `D(${d.i}): is <span class="mono">${esc(d.sub)}</span> = R[${d.j}..${d.i}] a substring of T? `;
+      if (d.ok) return head + `Yes → no new mismatch is forced; D(${d.i}) = ${d.z}.`;
+      return head + `<b>No</b> → R[${d.j}..${d.i}] needs at least one mismatch, so z becomes ${d.z} and the next block starts at ${d.i + 1}. D(${d.i}) = ${d.z}. <span class="muted">(bwa computes this in O(|R|) with the BWT of the reversed reference.)</span>`;
+    }
+    if (c.stage === 'search') {
+      const sn = Sr.snaps[c.si], e = sn.entry;
+      const head = `Pop ${entryStr(e)}: matched W to the read suffix R[${e.i}..${R.length - 1}]; remaining budget m = z − mm = ${sn.m}. `;
+      if (sn.action === 'pruneD') return head + `<span class="c-prune"><b>Prune:</b></span> D(${e.i - 1}) = ${Dm.D[e.i - 1]} > m, the rest of the read cannot fit.`;
+      if (sn.action === 'hit') return head + `<span class="c-hit"><b>Hit:</b></span> the whole read is consumed. SA rows ${e.k}..${e.l} give position${sn.hit.positions.length > 1 ? 's' : ''} ${sn.hit.positions.join(', ')} with ${e.mm} mismatch${e.mm === 1 ? '' : 'es'}.`;
+      if (sn.action === 'exact') {
+        const walk = sn.exactPath.map(w => `<span class="mono">${esc(w)}</span> ${ivStr(Idx.nodes.get(w))}`).join(' → ');
+        if (sn.exactOk) return head + `No mismatch left, so match the remaining prefix <span class="mono">${esc(R.slice(0, e.i))}</span> exactly in one go (bwt_match_exact_alt): ${walk}. <span class="c-hit"><b>Hit</b></span> at position${sn.hit.positions.length > 1 ? 's' : ''} ${sn.hit.positions.join(', ')}.`;
+        return head + `No mismatch left, so match the remaining prefix <span class="mono">${esc(R.slice(0, e.i))}</span> exactly in one go: ${walk ? walk + ' → ' : ''}<span class="mono">${esc(sn.failW)}</span> has an empty interval. <span class="c-prune"><b>Dead end.</b></span>`;
+      }
+      // expand
+      let o = head + `Next read letter R[${sn.i}] = <span class="mono">${esc(sn.c0)}</span>. `;
+      if (sn.i === 0) o += 'It is the last letter, so any affordable mismatch is allowed. ';
+      else if (!USE_D) o += 'Plain backtrack: no lower bound, mismatches allowed while budget remains. ';
+      else if (sn.allowDiff) o += `D(${sn.i - 1}) = ${Dm.D[sn.i - 1]} ≤ m − 1 = ${sn.m - 1}, so a mismatch here is allowed. `;
+      else o += `<span class="c-prune">D(${sn.i - 1}) = ${Dm.D[sn.i - 1]} &gt; m − 1 = ${sn.m - 1}: a mismatch here would leave too little budget for R[0..${sn.i - 1}], so only the exact letter is tried.</span> `;
+      o += 'Prepend each letter to W:';
+      sn.events.forEach(ev => {
+        if (ev.status === 'notInT') { o += `<span class="ev"><span class="mono">${esc(ev.a)}</span> does not occur in T, so the exact branch is impossible.</span>`; return; }
+        const lbl = `<span class="mono">${esc(ev.a)}·${esc(e.W) || 'ε'} = ${esc(ev.W2)}</span>`;
+        if (ev.status === 'pushed') o += `<span class="ev">${lbl} → [${ev.k},${ev.l}], ${ev.isMM ? '<span class="mm">mismatch</span>' : 'exact'}: <span class="c-stack">push with ${ev.mm} mm</span>.</span>`;
+        else if (ev.status === 'empty') o += `<span class="ev">${lbl} → empty interval, not in T${ev.isMM ? ' (mismatch)' : ' (exact)'}.</span>`;
+        else o += `<span class="ev">${lbl}: mismatch <span class="c-prune">not tried</span>${ev.exists ? ' (plain backtrack would descend here)' : ''}.</span>`;
+      });
+      return o;
+    }
+    // done
+    const cmp = `${Sr.pops} stack pop${Sr.pops === 1 ? '' : 's'} in ${USE_D ? 'bounded' : 'plain'} backtrack mode`;
+    if (!R.length || !Idx.n) return '<span class="muted">Nothing to search.</span>';
+    if (!Sr.hits.length) return `<b>Search finished:</b> no alignment with ≤ ${Z} mismatch${Z === 1 ? '' : 'es'}. ${cmp}. Try a larger z or the other mode to compare the work done.`;
+    const best = Sr.hits[0];
+    return `<b>Search finished:</b> ${Sr.hits.length} hit${Sr.hits.length === 1 ? '' : 's'}; the first found is the best, <span class="mono">${esc(best.W)}</span> at position${best.positions.length > 1 ? 's' : ''} ${best.positions.join(', ')} with ${best.mm} mismatch${best.mm === 1 ? '' : 'es'}, because the priority stack always pops the entry with the fewest mismatches. ${cmp}; switch the mode to compare.`;
+  }
+
+  function render() {
+    const v = view();
+    renderTabs(v); renderTrie(v); renderSA(v); renderD(v); renderStack(v); renderHits(v);
+    const stName = v.cur ? STAGE_NAME[v.cur.stage] : 'index';
+    const pops = v.snap ? v.snap.pops : 0;
+    $('status').innerHTML = `Stage: <b>${stName}</b> · step ${s} / ${S()} · z = ${Z} · ${pops} pop${pops === 1 ? '' : 's'} so far · ${v.snap ? v.snap.hits.length : 0} hit${v.snap && v.snap.hits.length === 1 ? '' : 's'}`;
+    $('explain').innerHTML = explain(v);
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------- events ----------
+  const nextStage = () => {
+    const c = s > 0 ? steps[s - 1] : null;
+    if (!c) { setS(stageEnd('D') || stageEnd('search') || S()); return; }
+    const e = stageEnd(c.stage);
+    if (s < e) setS(e);
+    else { const vs = visibleStages(), i = vs.indexOf(c.stage); setS(i + 1 < vs.length ? stageEnd(vs[i + 1]) : S()); }
+  };
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnStage').addEventListener('click', nextStage);
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('trie').addEventListener('click', e => {
+    const g = e.target.closest('g.node');
+    if (!g) return;
+    const id = g.dataset.id;
+    selId = selId === id ? null : id;
+    render();
+  });
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-stage]'); if (b) setS(stageStart(b.dataset.stage)); });
+  for (const id of ['ref', 'qry']) $(id).addEventListener('input', rebuild);
+  for (const id of ['selZ', 'chkBound']) $(id).addEventListener('change', rebuild);
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'n': case 'N': nextStage(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+    }
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>
