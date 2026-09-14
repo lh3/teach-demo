@@ -51,6 +51,7 @@
   .cell.filled.match rect { fill: #dff0df; }
   .cell:hover rect { stroke: #333; stroke-width: 1.5; }
   .cell.pred rect { stroke: #e6a800; stroke-width: 2.5; }
+  .cell.path rect { stroke: #1e6fd9; stroke-width: 2.4; }
   .cell.last rect { stroke: #222; stroke-width: 2.2; }
   .cell.trace rect { fill: var(--win); }
   .cell.trace.match rect { fill: #f0e9b0; }
@@ -71,6 +72,10 @@
   .win { font-weight: 700; background: var(--win); padding: 0 3px; border-radius: 3px; }
   .tie { font-family: system-ui, sans-serif; font-size: .85em; color: #a05a00; }
   .muted { color: #888; font-family: system-ui, sans-serif; }
+  #align { margin-top: 10px; }
+  #align .alab { font-size: .9rem; color: #555; margin-bottom: 2px; }
+  #align pre { margin: 0; font: 600 16px/1.35 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .15em; }
+  #align .gap { color: #999; } #align .mis { color: #d62828; } #align .bar { color: #1e6fd9; }
 </style>
 </head>
 <body>
@@ -103,6 +108,7 @@
 <div id="matrix"></div>
 <div id="status"></div>
 <div id="explain"></div>
+<div id="align"></div>
 
 <script>
 (function () {
@@ -114,7 +120,7 @@
   const elA = $('seqA'), elB = $('seqB'), elM = $('matrix'), elX = $('explain'), elS = $('status');
   const chk = $('chkTrace');
 
-  let A = '', B = '', n = 0, m = 0, D = [], P = [], k = 0, total = 1;
+  let A = '', B = '', n = 0, m = 0, D = [], P = [], C = [], k = 0, total = 1;
   let cellEls = [];
 
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -142,6 +148,28 @@
     return { D, P };
   }
 
+  // number of co-optimal paths from (0,0) into each cell
+  function countPaths(P) {
+    const C = P.map(row => row.map(() => 0));
+    for (let i = 0; i < P.length; i++) for (let j = 0; j < P[i].length; j++) {
+      if (i === 0 && j === 0) { C[i][j] = 1; continue; }
+      for (const d of P[i][j]) { const [pi, pj] = pred(i, j, d); C[i][j] += C[pi][pj]; }
+    }
+    return C;
+  }
+
+  // one optimal path from (0,0) to (i,j), preferring diagonal, then up, then left
+  function tracePath(i, j) {
+    const cells = new Set([i + ',' + j]), ops = [];
+    while (i > 0 || j > 0) {
+      const d = P[i][j].includes('diag') ? 'diag' : P[i][j].includes('up') ? 'up' : 'left';
+      ops.push({ d, i, j });
+      [i, j] = pred(i, j, d);
+      cells.add(i + ',' + j);
+    }
+    return { cells, ops: ops.reverse() };
+  }
+
   function computeTrace() {
     const cells = new Set(), arrows = new Set();
     const stack = [[m, n]];
@@ -162,6 +190,7 @@
     A = clean(elA.value); B = clean(elB.value);
     n = A.length; m = B.length; total = (m + 1) * (n + 1);
     ({ D, P } = computeDP(A, B));
+    C = countPaths(P);
     k = 0;
     render();
   }
@@ -175,6 +204,8 @@
     const W = HDR + (n + 1) * CELL, H = HDR + (m + 1) * CELL;
     const tracing = chk.checked && k === total;
     const tr = tracing ? computeTrace() : null;
+    const li = k > 0 ? Math.floor((k - 1) / (n + 1)) : -1, lj = k > 0 ? (k - 1) % (n + 1) : -1;
+    const path = k > 0 ? tracePath(li, lj) : null;
 
     let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 ${W + 2} ${H + 2}" style="max-width:${W + 2}px" class="${tracing ? 'tracing' : ''}">`;
     s += '<defs>';
@@ -209,6 +240,7 @@
         const cls = ['cell'];
         if (filled) cls.push('filled');
         if (i > 0 && j > 0 && A[j - 1] === B[i - 1]) cls.push('match');
+        if (path && path.cells.has(key)) cls.push('path');
         if (filled && idx === k - 1) cls.push('last');
         const inTrace = tr && tr.cells.has(key);
         if (inTrace) cls.push('trace');
@@ -239,7 +271,29 @@
     elS.innerHTML = `Filled ${k} / ${total} cells` +
       (k === total ? ` &nbsp;·&nbsp; <b>edit distance = ${D[m][n]}</b>` : '') +
       (k === total && !chk.checked ? ' &nbsp;·&nbsp; <span class="muted">tick “Show traceback” to highlight all optimal paths</span>' : '');
+    renderAlign(path, li, lj);
     showExplainDefault();
+  }
+
+  function renderAlign(path, i, j) {
+    if (!path) { $('align').innerHTML = ''; return; }
+    let top = '', mid = '', bot = '';
+    for (const op of path.ops) {
+      if (op.d === 'diag') {
+        const a = A[op.j - 1], b = B[op.i - 1], ok = a === b;
+        top += ok ? esc(a) : `<span class="mis">${esc(a)}</span>`;
+        mid += ok ? '<span class="bar">|</span>' : '<span class="mis">·</span>';
+        bot += ok ? esc(b) : `<span class="mis">${esc(b)}</span>`;
+      } else if (op.d === 'up') { top += '<span class="gap">-</span>'; mid += ' '; bot += esc(B[op.i - 1]); }
+      else { top += esc(A[op.j - 1]); mid += ' '; bot += '<span class="gap">-</span>'; }
+    }
+    const nPaths = C[i][j];
+    const what = i === 0 && j === 0 ? 'two empty prefixes' : `A[1..${j}] and B[1..${i}]`;
+    $('align').innerHTML = `<div class="alab">Optimal alignment of ${what}, cost D[${i}][${j}] = ${D[i][j]}` +
+      (nPaths > 1 ? ` <span class="muted">(one of ${nPaths} co-optimal alignments; path outlined in blue)</span>` : ' <span class="muted">(path outlined in blue)</span>') + '</div>' +
+      (path.ops.length ? `<pre>A  ${top}
+   ${mid}
+B  ${bot}</pre>` : '');
   }
 
   function term(dir, expr, v, best, note) {
