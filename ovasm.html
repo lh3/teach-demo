@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlap Graph Assembly Demo</title>
+<style>
+  :root {
+    --cur: #e6a800; --curbg: #fff3c4;
+    --new: #1e6fd9; --newbg: #d6e6fb;
+    --tr: #e0641a; --trbg: #fde3d0;
+    --drop: #8a8fa8;
+    --u0: #e5d9f2; --u1: #d9f2e0; --u2: #fde3d0; --u3: #d6e6fb; --u4: #fbe3f0; --u5: #f3f0c8;
+    --u0s: #7b3fa0; --u1s: #1a9e3f; --u2s: #c65a11; --u3s: #1e6fd9; --u4s: #b83280; --u5s: #8a7a00;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1500px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 16px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-start; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  textarea, .controls input[type=text], .controls input[type=number] {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; text-transform: uppercase; padding: 4px 6px;
+  }
+  textarea { width: 20ch; height: 9.5em; resize: vertical; letter-spacing: .05em; }
+  input[type=number] { width: 4.5em; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  .top { display: grid; grid-template-columns: auto minmax(300px, 760px); gap: 0 28px; align-items: start; margin-bottom: 12px; justify-content: start; }
+  .top .hint { margin: 0; }
+  .readsbox { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color: #444; }
+  @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 10px; font-size: .9rem; }
+  .tabs button { padding: 3px 12px; font-size: .9rem; border-radius: 14px; border: 1px solid #bbb; background: #f6f6f6; }
+  .tabs button.on { background: var(--new); border-color: var(--new); color: #fff; font-weight: 600; }
+  .tabs button.past { background: #e4eefb; border-color: var(--new); color: var(--new); }
+  .tabs .sep { color: #aaa; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 4px; }
+  #explain { margin-top: 10px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  #explain .mono, #detail .mono { font-weight: 600; }
+  #detail { margin-top: 6px; }
+  #detail { overflow-x: auto; }
+  #detail pre { margin: 4px 0; font: 15px/1.3 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; }
+  .muted { color: #888; }
+  .c-new { color: var(--new); } .c-tr { color: var(--tr); } .c-drop { color: var(--drop); } .c-cur { color: #a67c00; }
+  .hl { background: var(--curbg); border-radius: 2px; font-weight: 700; }
+  .hlb { background: var(--newbg); border-radius: 2px; font-weight: 700; }
+  .hlx { background: linear-gradient(180deg, var(--newbg) 50%, var(--curbg) 50%); border-radius: 2px; font-weight: 700; }
+  .ev { display: block; padding-left: 1.2em; }
+
+  .main { display: grid; grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr); gap: 0 28px; align-items: start; }
+  @media (max-width: 1000px) { .main { grid-template-columns: 1fr; } }
+  #graph { overflow-x: auto; padding: 4px 0 8px; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .edge path { fill: none; stroke: #444; stroke-width: 1.4; }
+  .edge text { font: 11px system-ui, sans-serif; fill: #555; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+  .edge.new path { stroke: var(--new); stroke-width: 2.4; }
+  .edge.new text { fill: var(--new); font-weight: 700; }
+  .edge.marked path { stroke: var(--tr); stroke-width: 2.2; stroke-dasharray: 6 4; }
+  .edge.marked text { fill: var(--tr); font-weight: 700; }
+  .edge.gone path { stroke: #ccc; stroke-dasharray: 3 4; opacity: .7; } .edge.gone text { fill: #bbb; }
+  .edge.dropped path { stroke: var(--drop); stroke-dasharray: 6 4; stroke-width: 2; } .edge.dropped text { fill: var(--drop); }
+  .edge.path path { stroke: #222; stroke-width: 3.2; }
+  .edge.hover path { stroke: var(--cur); stroke-width: 3.2; } .edge.hover text { fill: #a67c00; }
+  .edge { cursor: pointer; }
+  .node rect { fill: #fff; stroke: #333; stroke-width: 1.3; }
+  .node text { font: 600 13px ui-monospace, Menlo, Consolas, monospace; fill: #222; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .node text.id { font: 10px system-ui, sans-serif; fill: #888; text-anchor: end; }
+  .node { cursor: grab; }
+  .node.contained rect { fill: #f2f2f2; stroke: #bbb; stroke-dasharray: 4 3; } .node.contained text { fill: #aaa; }
+  .node.cur rect { fill: var(--curbg); stroke: #000; stroke-width: 2.4; }
+  .node.u0 rect { fill: var(--u0); stroke: var(--u0s); } .node.u1 rect { fill: var(--u1); stroke: var(--u1s); }
+  .node.u2 rect { fill: var(--u2); stroke: var(--u2s); } .node.u3 rect { fill: var(--u3); stroke: var(--u3s); }
+  .node.u4 rect { fill: var(--u4); stroke: var(--u4s); } .node.u5 rect { fill: var(--u5); stroke: var(--u5s); }
+  .node.onpath rect { stroke-width: 2.8; }
+  .node.unode rect { stroke-width: 2; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; margin: 0 0 6px; color: #444; }
+  .legend .ln { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 3px solid; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1.5px solid #333; border-radius: 3px; }
+
+  table.t { border-collapse: collapse; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9rem; }
+  table.t th { font-weight: 600; color: #555; text-align: left; padding: 1px 10px 3px 4px; font-family: system-ui, sans-serif; font-size: .8rem; }
+  table.t td { padding: 1px 10px 1px 4px; white-space: nowrap; }
+  table.t tr.cur td { background: var(--curbg); }
+  table.t tr.contained td { color: #aaa; text-decoration: line-through; }
+  table.t tr.marked td { color: var(--tr); } table.t tr.gone td { color: #bbb; text-decoration: line-through; }
+  table.t tr.dropped td { color: var(--drop); text-decoration: line-through; }
+  table.t tr.new td { color: var(--new); font-weight: 600; }
+  table.t tr.hidden { display: none; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; border: 1px solid #666; }
+  .ucard { border: 1.5px solid #999; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; background: #fafafa; }
+  .ucard .h { font-size: .85rem; color: #444; }
+  .ucard pre { margin: 4px 0 0; font: 15px/1.3 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; white-space: pre-wrap; }
+  .empty { color: #888; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Assembly with an overlap graph: overlap, reduce, compact</h1>
+
+<div class="top">
+  <label class="readsbox">Reads (one per line)<textarea id="reads" spellcheck="false">TGCAAG
+CAAGGGCTG
+GGGCTGTGA
+CTGTGATAG
+GTGATAGACTC
+TAGACTCGCTG
+ACTCGCTGAT
+GCTGATGC</textarea></label>
+  <p class="hint">
+      Reads are single-stranded and error-free. <b>Overlap:</b> for every ordered pair, the longest exact match
+      between a suffix of one read and a prefix of the other (a dove-tail) of at least the minimum length becomes an edge.
+      <b>Reduce:</b> an edge v→x is transitive if some v→w→x explains the same placement of x, i.e. the overhang
+      lengths add up; it is removed (Myers 2005). <b>Compact:</b> maximal paths whose inner vertices have one edge in and
+      one out are merged into unitigs. Drag nodes to tidy the drawing; hover an edge to see the overlap.
+      Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>n</kbd> next stage, <kbd>f</kbd> run all, <kbd>r</kbd> reset.
+  </p>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnStage" title="Jump to the end of the current stage (n)">Next stage ▶▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Clear (r)">Reset</button>
+  <label>Min overlap <input type="number" id="minOvl" value="4" min="1" max="12"></label>
+</div>
+
+<div class="tabs" id="tabs"></div>
+<div id="status"></div>
+
+<div class="main">
+  <div>
+    <h2 id="ghead">Overlap graph</h2>
+    <div class="legend">
+      <span><span class="ln" style="border-color:var(--new)"></span>new edge</span>
+      <span><span class="ln" style="border-color:var(--tr);border-top-style:dashed"></span>transitive (to remove)</span>
+      <span><span class="ln" style="border-color:var(--drop);border-top-style:dashed"></span>non-best (dropped)</span>
+      <span><span class="ln" style="border-color:#222;border-top-width:4px"></span>current unitig path</span>
+      <span><span class="box" style="background:var(--curbg)"></span>current read</span>
+      <span><span class="box" style="background:#f2f2f2;border-style:dashed;border-color:#bbb"></span>contained (removed)</span>
+    </div>
+    <div id="graph"></div>
+    <div id="explain"></div>
+    <div id="detail"></div>
+  </div>
+  <div>
+    <h2>Reads</h2>
+    <div id="rtable"></div>
+    <h2>Edges (v → w, overlap)</h2>
+    <div id="etable"></div>
+    <h2>Unitigs</h2>
+    <div id="utigs"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ekey = e => e.v + '>' + e.w;
+
+  // ---------------- model (DOM-free) ----------------
+  function parseReads(text) {
+    const out = [];
+    for (const line of text.split(/\r?\n/)) {
+      const seq = line.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 30);
+      if (seq) out.push({ id: out.length, seq });
+      if (out.length >= 20) break;
+    }
+    return out;
+  }
+
+  function removeContained(reads) {
+    const kept = [], removed = [];
+    for (const r of reads) {
+      let by = null;
+      for (const o of reads) {
+        if (o === r) continue;
+        if (o.seq === r.seq ? o.id < r.id : o.seq.includes(r.seq)) { by = o; break; }
+      }
+      if (by) removed.push({ id: r.id, by: by.id, dup: by.seq === r.seq }); else kept.push(r);
+    }
+    return { kept, removed };
+  }
+
+  // longest l with suffix(a, l) == prefix(b, l), proper dove-tail (l < |a|, l < |b|); 0 if none
+  function overlapLen(a, b) {
+    for (let l = Math.min(a.length, b.length) - 1; l >= 1; l--) if (a.endsWith(b.slice(0, l))) return l;
+    return 0;
+  }
+
+  function findOverlaps(reads, minOvl) {
+    const edges = [], checks = new Map();
+    for (const v of reads) {
+      const list = [];
+      for (const w of reads) {
+        if (w === v) continue;
+        const raw = overlapLen(v.seq, w.seq);
+        const ok = raw >= minOvl;
+        list.push({ w: w.id, raw, ok });
+        if (ok) edges.push({ v: v.id, w: w.id, ovl: raw });
+      }
+      checks.set(v.id, list);
+    }
+    return { edges, checks };
+  }
+
+  // Myers-style transitive reduction with exact overhang arithmetic (fuzz 0)
+  function transitiveReduce(reads, edges) {
+    const len = new Map(reads.map(r => [r.id, r.seq.length]));
+    const hang = e => len.get(e.v) - e.ovl;            // where w starts relative to v
+    const out = new Map(reads.map(r => [r.id, []]));
+    edges.forEach(e => out.get(e.v).push(e));
+    for (const l of out.values()) l.sort((a, b) => hang(a) - hang(b));
+    const records = [], reduced = new Set();
+    for (const r of reads) {
+      const outs = out.get(r.id);
+      if (outs.length < 2) continue;
+      const inplay = new Set(outs.map(e => e.w)), elim = new Set();
+      const longest = hang(outs[outs.length - 1]);
+      const rec = { v: r.id, marked: [], longest };
+      for (const e of outs) {
+        if (elim.has(e.w)) continue;
+        for (const f of out.get(e.w)) {
+          if (hang(e) + hang(f) > longest) break;
+          if (!inplay.has(f.w) || elim.has(f.w)) continue;
+          const g = outs.find(o => o.w === f.w);
+          if (hang(e) + hang(f) === hang(g)) { elim.add(f.w); reduced.add(ekey(g)); rec.marked.push({ g, e, f, via: e.w }); }
+        }
+      }
+      records.push(rec);
+    }
+    return { records, reduced, hang };
+  }
+
+  // BOG-style: keep an edge if it is the longest out-edge of v or the longest in-edge of w
+  function bestOverlapFilter(edges) {
+    const bestOut = new Map(), bestIn = new Map();
+    for (const e of edges) {
+      if (!bestOut.has(e.v) || bestOut.get(e.v).ovl < e.ovl) bestOut.set(e.v, e);
+      if (!bestIn.has(e.w) || bestIn.get(e.w).ovl < e.ovl) bestIn.set(e.w, e);
+    }
+    const removed = [];
+    for (const e of edges) {
+      if (bestOut.get(e.v) === e || bestIn.get(e.w) === e) continue;
+      removed.push({ e, betterOut: bestOut.get(e.v), betterIn: bestIn.get(e.w) });
+    }
+    return { removed, removedKeys: new Set(removed.map(x => ekey(x.e))) };
+  }
+
+  function compact(reads, edges) {
+    const seq = new Map(reads.map(r => [r.id, r.seq]));
+    const out = new Map(reads.map(r => [r.id, []])), inn = new Map(reads.map(r => [r.id, []]));
+    edges.forEach(e => { out.get(e.v).push(e); inn.get(e.w).push(e); });
+    const internal = e => out.get(e.v).length === 1 && inn.get(e.w).length === 1;
+    const used = new Set(), unitigs = [];
+    const start = new Map();  // read -> unitig containing it
+    for (const r of reads) {
+      if (used.has(r.id)) continue;
+      // walk back to the beginning of the maximal path
+      let u = r.id, guard = 0;
+      while (inn.get(u).length === 1 && internal(inn.get(u)[0]) && inn.get(u)[0].v !== r.id && guard++ < reads.length) u = inn.get(u)[0].v;
+      const path = [u], pedges = []; used.add(u);
+      let s = seq.get(u);
+      while (out.get(u).length === 1 && internal(out.get(u)[0]) && !used.has(out.get(u)[0].w)) {
+        const e = out.get(u)[0]; u = e.w; used.add(u); path.push(u); pedges.push(e); s += seq.get(u).slice(e.ovl);
+      }
+      const ut = { id: unitigs.length, path, pedges, seq: s };
+      unitigs.push(ut); path.forEach(x => start.set(x, ut.id));
+    }
+    const uedges = [];
+    for (const e of edges) {
+      const a = start.get(e.v), b = start.get(e.w);
+      const ua = unitigs[a], ub = unitigs[b];
+      if (a === b && ua.pedges.includes(e)) continue;   // internal to a unitig
+      uedges.push({ v: a, w: b, ovl: e.ovl, from: e });
+    }
+    return { unitigs, uedges };
+  }
+
+  // layered layout: longest-path layers (back edges ignored), barycenter ordering, variable node widths
+  function layoutDAG(ids, edges, widthOf, opt) {
+    const { LX = 60, LY = 52, H0 = 26 } = opt || {};
+    const adj = new Map(ids.map(i => [i, []])), radj = new Map(ids.map(i => [i, []]));
+    const state = new Map(), back = new Set();
+    edges.forEach(e => adj.get(e.v).push(e.w));
+    const dfs = u => { state.set(u, 1); for (const w of adj.get(u)) { if (!state.has(w)) dfs(w); else if (state.get(w) === 1) back.add(u + '>' + w); } state.set(u, 2); };
+    ids.forEach(u => { if (!state.has(u)) dfs(u); });
+    const fwd = edges.filter(e => !back.has(ekey(e)));
+    const indeg = new Map(ids.map(i => [i, 0]));
+    fwd.forEach(e => { indeg.set(e.w, indeg.get(e.w) + 1); radj.get(e.w).push(e.v); });
+    const layer = new Map(ids.map(i => [i, 0]));
+    const q = ids.filter(i => indeg.get(i) === 0);
+    const fadj = new Map(ids.map(i => [i, []])); fwd.forEach(e => fadj.get(e.v).push(e.w));
+    while (q.length) { const u = q.shift(); for (const w of fadj.get(u)) { layer.set(w, Math.max(layer.get(w), layer.get(u) + 1)); indeg.set(w, indeg.get(w) - 1); if (indeg.get(w) === 0) q.push(w); } }
+    const nL = ids.length ? Math.max(...layer.values()) + 1 : 0;
+    const layers = Array.from({ length: nL }, () => []);
+    ids.forEach(i => layers[layer.get(i)].push(i));
+    const order = new Map(); layers.forEach(l => l.forEach((i, k) => order.set(i, k)));
+    const bary = (i, nbrs) => { const ns = nbrs.filter(x => order.has(x)); return ns.length ? ns.reduce((a, x) => a + order.get(x), 0) / ns.length : order.get(i); };
+    for (let it = 0; it < 4; it++) {
+      for (let l = 1; l < nL; l++) { layers[l].sort((a, b) => bary(a, radj.get(a)) - bary(b, radj.get(b))); layers[l].forEach((i, k) => order.set(i, k)); }
+      for (let l = nL - 2; l >= 0; l--) { layers[l].sort((a, b) => bary(a, fadj.get(a)) - bary(b, fadj.get(b))); layers[l].forEach((i, k) => order.set(i, k)); }
+    }
+    // single-node layers zig-zag between two rows and overlap horizontally, so chains stay compact
+    const maxRows = Math.max(layers.some(l => l.length === 1) ? 2 : 1, ...layers.map(l => l.length));
+    const pos = new Map(); let x = 20;
+    layers.forEach((l, li) => {
+      const wmax = Math.max(...l.map(widthOf));
+      const nextSingle = li + 1 < nL && layers[li + 1].length === 1;
+      l.forEach((k0 => (i, k) => {
+        const row = l.length === 1 ? (maxRows - 1) / 2 + (li % 2 ? .5 : -.5) : k + (maxRows - l.length) / 2;
+        pos.set(i, { x: x + wmax / 2, y: 20 + row * LY + H0 / 2 });
+      })());
+      x += l.length === 1 && nextSingle ? wmax * .62 + 28 : wmax + LX;
+    });
+    return { pos, layer, width: x + 120, height: 40 + maxRows * LY };
+  }
+
+  function buildModel(reads, minOvl) {
+    const { kept, removed } = removeContained(reads);
+    const { edges, checks } = findOverlaps(kept, minOvl);
+    const tr = transitiveReduce(kept, edges);
+    const afterTR = edges.filter(e => !tr.reduced.has(ekey(e)));
+    const { unitigs, uedges } = compact(kept, afterTR);
+    // on the unitig graph: drop edges that are the best at neither end, then compact again
+    const best = bestOverlapFilter(uedges);
+    const bestReadKeys = new Set(best.removed.map(x => ekey(x.e.from)));
+    const keptUEdges = uedges.filter(e => !best.removedKeys.has(ekey(e)));
+    const c2 = compact(unitigs.map(u => ({ id: u.id, seq: u.seq })), keptUEdges);
+    const finalUnitigs = c2.unitigs.map(U => ({ id: U.id, upath: U.path, seq: U.seq, path: U.path.flatMap(uid => unitigs[uid].path) }));
+    const finalUEdges = c2.uedges;
+    const steps = [];
+    if (removed.length) removed.forEach((r, i) => steps.push({ stage: 'contained', ri: i })); else steps.push({ stage: 'contained', none: true });
+    kept.forEach((r, i) => steps.push({ stage: 'overlap', vi: i }));
+    tr.records.forEach((r, i) => steps.push({ stage: 'reduce', rec: i }));
+    steps.push({ stage: 'reduce', apply: true });
+    unitigs.forEach((u, i) => steps.push({ stage: 'compact', ui: i }));
+    steps.push({ stage: 'result' });
+    steps.push({ stage: 'best' });
+    steps.push({ stage: 'final' });
+    return { reads, kept, removed, edges, checks, tr, afterTR, unitigs, uedges, best, bestReadKeys, keptUEdges, finalUnitigs, finalUEdges, steps, minOvl };
+  }
+
+  // ---------------- state ----------------
+  let M = null, s = 0, posR = new Map(), posU = new Map(), posF = new Map(), hoverEdge = null, drag = null;
+  const STAGES = ['contained', 'overlap', 'reduce', 'compact', 'result', 'best', 'final'];
+  const STAGE_NAME = { contained: 'Contained reads', overlap: 'Find overlaps', reduce: 'Transitive reduction', compact: 'Compaction', result: 'Unitig graph', best: 'Drop non-best overlaps', final: 'Final unitig graph' };
+  const S = () => M.steps.length;
+  const label = r => r.seq.length <= 14 ? r.seq : `r${r.id} ${r.seq.slice(0, 10)}…`;
+  const widthOf = txt => txt.length * 8.2 + 22;
+  const readById = id => M.reads[id];
+
+  function rebuild() {
+    const reads = parseReads($('reads').value);
+    const minOvl = Math.max(1, Math.min(12, +$('minOvl').value || 1));
+    M = buildModel(reads, minOvl);
+    const lay = layoutDAG(M.kept.map(r => r.id), M.edges, id => widthOf(label(readById(id))));
+    posR = lay.pos; M.readLayout = lay;
+    // contained reads: park them in a row below the graph
+    let cx = 20;
+    M.removed.forEach(r => { const w = widthOf(label(readById(r.id))); posR.set(r.id, { x: cx + w / 2, y: lay.height + 10 }); cx += w + 30; });
+    if (M.removed.length) lay.height += 50;
+    const ulay = layoutDAG(M.unitigs.map(u => u.id), M.uedges, id => widthOf('u' + id + ' ' + M.unitigs[id].seq), { LX: 70 });
+    posU = ulay.pos; M.utigLayout = ulay;
+    const flay = layoutDAG(M.finalUnitigs.map(u => u.id), M.finalUEdges, id => widthOf('u' + id + ' ' + M.finalUnitigs[id].seq), { LX: 70 });
+    posF = flay.pos; M.finalLayout = flay;
+    const plain = () => 'normal';
+    M.graphMinH = Math.max(
+      drawGraph(M.reads, M.edges, posR, lay, () => '', plain, label, n => n.id, 'r').height,
+      drawGraph(M.unitigs.map(u => ({ id: u.id, seq: u.seq })), M.uedges, posU, ulay, () => '', plain, n => 'u' + n.id + ' ' + n.seq, n => n.id, 'u').height,
+      drawGraph(M.finalUnitigs.map(u => ({ id: u.id, seq: u.seq })), M.finalUEdges, posF, flay, () => '', plain, n => 'u' + n.id + ' ' + n.seq, n => n.id, 'f').height) + 12;
+    s = 0; hoverEdge = null; render();
+  }
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); hoverEdge = null; render(); };
+  const stageEnd = st => { let e = 0; M.steps.forEach((x, i) => { if (x.stage === st) e = i + 1; }); return e; };
+  const stageStart = st => { const i = M.steps.findIndex(x => x.stage === st); return i < 0 ? S() : i + 1; };
+
+  // ---------------- view derivation ----------------
+  function view() {
+    const cur = s > 0 ? M.steps[s - 1] : null;
+    const passed = M.steps.slice(0, s);
+    const containedDone = new Set(passed.filter(x => x.stage === 'contained' && !x.none).map(x => M.removed[x.ri].id));
+    const ovlDone = new Set(passed.filter(x => x.stage === 'overlap').map(x => M.kept[x.vi].id));
+    const marked = new Set(); passed.filter(x => x.stage === 'reduce' && x.rec !== undefined).forEach(x => M.tr.records[x.rec].marked.forEach(m => marked.add(ekey(m.g))));
+    const applied = passed.some(x => x.stage === 'reduce' && x.apply);
+    const bestDone = passed.some(x => x.stage === 'best');
+    const final2 = cur && cur.stage === 'final';
+    const unitigOf = new Map();
+    if (final2) M.finalUnitigs.forEach(U => U.path.forEach(id => unitigOf.set(id, U.id)));
+    else passed.filter(x => x.stage === 'compact').forEach(x => M.unitigs[x.ui].path.forEach(id => unitigOf.set(id, x.ui)));
+    const final = cur && (cur.stage === 'result' || cur.stage === 'best');
+    return { cur, containedDone, ovlDone, marked, applied, bestDone, unitigOf, final, final2 };
+  }
+
+  function edgeState(e, v) {
+    const k = ekey(e);
+    if (!v.ovlDone.has(e.v)) return 'hidden';
+    if (M.tr.reduced.has(k) && v.marked.has(k)) return v.applied ? 'gone' : 'marked';
+    if (M.bestReadKeys.has(k) && v.bestDone) return 'dropped';
+    if (v.cur && v.cur.stage === 'overlap' && M.kept[v.cur.vi].id === e.v) return 'new';
+    return 'normal';
+  }
+
+  // ---------------- rendering ----------------
+  function bez(p0, p1, p2, p3, t) {
+    const u = 1 - t; return { x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x, y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y };
+  }
+
+  function drawGraph(nodes, edges, pos, lay, nodeCls, edgeCls, nodeLabel, nodeId, kind) {
+    const H0 = 26;
+    let W = lay.width, H = lay.height, minY = 0;
+    for (const p of pos.values()) { W = Math.max(W, p.x + 160); H = Math.max(H, p.y + 40); }
+    let o = '<defs>';
+    for (const [id, col] of [['n', '#444'], ['new', '#1e6fd9'], ['tr', '#e0641a'], ['gone', '#ccc'], ['drop', '#8a8fa8'], ['path', '#222'], ['hov', '#e6a800']])
+      o += `<marker id="ah-${id}" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="8.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="${col}"/></marker>`;
+    o += '</defs>';
+    const wOf = new Map(nodes.map(n => [nodeId(n), widthOf(nodeLabel(n))]));
+    const ys = nodes.map(n => pos.get(nodeId(n)).y), midY = ys.length ? ys.reduce((x, y) => x + y, 0) / ys.length : 0;
+    for (const e of edges) {
+      const cls = edgeCls(e);
+      const a = pos.get(e.v), b = pos.get(e.w), wa = wOf.get(e.v) / 2, wb = wOf.get(e.w) / 2, hh = H0 / 2;
+      // point on the border of a node's box in the direction of `to`
+      const anchor = (c, hw, to) => {
+        const dx = to.x - c.x, dy = to.y - c.y;
+        if (!dx && !dy) return { x: c.x + hw, y: c.y };
+        const t = Math.min(hw / Math.max(1e-6, Math.abs(dx)), hh / Math.max(1e-6, Math.abs(dy))) * 1.04;
+        return { x: c.x + dx * t, y: c.y + dy * t };
+      };
+      const ldiff = lay.layer ? Math.abs((lay.layer.get(e.w) || 0) - (lay.layer.get(e.v) || 0)) : 1;
+      const backward = b.x < a.x - 10;
+      let p0, p1, p2, p3, mid;
+      if (ldiff > 1 || backward) {          // arcs: below the nodes when both ends are in the lower half (or going backwards), else above
+        const below = backward || (a.y + b.y) / 2 > midY;
+        const apexY = backward ? Math.max(a.y, b.y) + 40 + 8 * ldiff
+          : below ? Math.max(a.y, b.y) + 18 + 22 * (ldiff - 1) : Math.min(a.y, b.y) - 18 - 22 * (ldiff - 1);
+        minY = Math.min(minY, apexY - 12); H = Math.max(H, apexY + 30);
+        p0 = anchor(a, wa, { x: a.x + (b.x - a.x) * .25, y: apexY });
+        p3 = anchor(b, wb, { x: b.x - (b.x - a.x) * .25, y: apexY });
+        p1 = { x: p0.x + (p3.x - p0.x) * .25, y: apexY }; p2 = { x: p3.x - (p3.x - p0.x) * .25, y: apexY };
+        mid = bez(p0, p1, p2, p3, .5);
+      } else {                              // nearly straight edge between neighbours, label offset to one side
+        p0 = anchor(a, wa, b); p3 = anchor(b, wb, a);
+        p1 = { x: p0.x + (p3.x - p0.x) / 3, y: p0.y + (p3.y - p0.y) / 3 }; p2 = { x: p0.x + 2 * (p3.x - p0.x) / 3, y: p0.y + 2 * (p3.y - p0.y) / 3 };
+        const len = Math.hypot(p3.x - p0.x, p3.y - p0.y) || 1;
+        mid = { x: (p0.x + p3.x) / 2 - (p3.y - p0.y) / len * 9, y: (p0.y + p3.y) / 2 + (p3.x - p0.x) / len * 9 };
+      }
+      if (cls === 'hidden') continue;   // geometry above still counts towards the canvas size
+      const mk = cls.includes('hover') ? 'hov' : cls.includes('path') ? 'path' : cls.includes('new') ? 'new' : cls.includes('marked') ? 'tr' : cls.includes('gone') ? 'gone' : cls.includes('dropped') ? 'drop' : 'n';
+      o += `<g class="edge ${cls}" data-v="${e.v}" data-w="${e.w}"><path d="M${p0.x.toFixed(1)},${p0.y.toFixed(1)} C${p1.x.toFixed(1)},${p1.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} ${p3.x.toFixed(1)},${p3.y.toFixed(1)}" marker-end="url(#ah-${mk})"/>` +
+        `<path d="M${p0.x.toFixed(1)},${p0.y.toFixed(1)} C${p1.x.toFixed(1)},${p1.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} ${p3.x.toFixed(1)},${p3.y.toFixed(1)}" style="stroke:transparent;stroke-width:12"/>` +
+        `<text x="${mid.x.toFixed(1)}" y="${(mid.y - 1).toFixed(1)}">${e.ovl}</text></g>`;
+    }
+    for (const n of nodes) {
+      const id = nodeId(n), p = pos.get(id), w = wOf.get(id), cls = nodeCls(n);
+      o += `<g class="node ${cls}" data-id="${id}"><title>${esc(n.seq)}</title><rect x="${(p.x - w / 2).toFixed(1)}" y="${(p.y - H0 / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${H0}" rx="6"/>` +
+        `<text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}">${esc(nodeLabel(n))}</text>` +
+        (kind === 'r' && n.seq.length <= 14 ? `<text class="id" x="${(p.x - w / 2 - 3).toFixed(1)}" y="${(p.y - H0 / 2 + 6).toFixed(1)}">r${id}</text>` : '') + '</g>';
+    }
+    const pad = -minY;
+    return { height: H + pad, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H + pad}" viewBox="0 0 ${W} ${H + pad}" data-kind="${kind}" data-pad="${pad}"><g transform="translate(0,${pad})">${o}</g></svg>` };
+  }
+
+  function renderGraph(v) {
+    $('graph').style.minHeight = M.graphMinH + 'px';   // fixed box: the graph never moves between steps
+    if (v.final2) {
+      $('ghead').textContent = 'Final unitig graph';
+      const nodes = M.finalUnitigs.map(u => ({ id: u.id, seq: u.seq }));
+      $('graph').innerHTML = drawGraph(nodes, M.finalUEdges, posF, M.finalLayout, n => 'unode u' + (n.id % 6), () => 'normal', n => 'u' + n.id + ' ' + n.seq, n => n.id, 'f').svg;
+      return;
+    }
+    if (v.final) {
+      $('ghead').textContent = 'Unitig graph';
+      const nodes = M.unitigs.map(u => ({ id: u.id, seq: u.seq }));
+      const ecls = e => v.bestDone && M.best.removedKeys.has(ekey(e)) ? 'dropped' : 'normal';
+      $('graph').innerHTML = drawGraph(nodes, M.uedges, posU, M.utigLayout, n => 'unode u' + (n.id % 6), ecls, n => 'u' + n.id + ' ' + n.seq, n => n.id, 'u').svg;
+      return;
+    }
+    $('ghead').textContent = 'Overlap graph';
+    const curPath = v.cur && v.cur.stage === 'compact' ? M.unitigs[v.cur.ui] : null;
+    const pathKeys = new Set(curPath ? curPath.pedges.map(ekey) : []);
+    const curRead = v.cur && v.cur.stage === 'overlap' ? M.kept[v.cur.vi].id : v.cur && v.cur.stage === 'reduce' && v.cur.rec !== undefined ? M.tr.records[v.cur.rec].v : v.cur && v.cur.stage === 'contained' && !v.cur.none ? M.removed[v.cur.ri].id : null;
+    const nodeCls = n => {
+      const c = [];
+      if (v.containedDone.has(n.id)) c.push('contained');
+      if (n.id === curRead) c.push('cur');
+      if (v.unitigOf.has(n.id)) c.push('u' + (v.unitigOf.get(n.id) % 6));
+      if (curPath && curPath.path.includes(n.id)) c.push('onpath');
+      return c.join(' ');
+    };
+    const edgeCls = e => {
+      const st = edgeState(e, v); if (st === 'hidden') return 'hidden';
+      const c = [st];
+      if (pathKeys.has(ekey(e))) c.push('path');
+      if (hoverEdge === ekey(e)) c.push('hover');
+      return c.join(' ');
+    };
+    const nodes = M.reads.filter(r => !M.removed.some(x => x.id === r.id) || true);
+    $('graph').innerHTML = drawGraph(nodes, M.edges, posR, M.readLayout, nodeCls, edgeCls, label, n => n.id, 'r').svg;
+  }
+
+  function ovlBlock(e, cls) {
+    const a = readById(e.v).seq, b = readById(e.w).seq, off = a.length - e.ovl;
+    const hl = cls || 'hl';
+    return `<pre>r${e.v}  ${esc(a.slice(0, off))}<span class="${hl}">${esc(a.slice(off))}</span>\nr${e.w}  ${' '.repeat(off)}<span class="${hl}">${esc(b.slice(0, e.ovl))}</span>${esc(b.slice(e.ovl))}</pre>`;
+  }
+
+  // three reads stacked at their offsets: v, then w at hang(v→w), then x at hang(v→w)+hang(w→x)
+  function triBlock(m) {
+    const hang = M.tr.hang, e = m.e, f = m.f;
+    const a = readById(e.v).seq, b = readById(e.w).seq, c = readById(f.w).seq;
+    const o1 = hang(e), o2 = hang(e) + hang(f);
+    const pad = n => ' '.repeat(n);
+    const line1 = `r${e.v}  ${esc(a.slice(0, o1))}<span class="hlb">${esc(a.slice(o1))}</span>`;
+    // w carries two overlaps: [0, e.ovl) with v and [q, |w|) with x; they may overlap each other
+    const q = b.length - f.ovl, lo = Math.min(e.ovl, q), hi = Math.max(e.ovl, q);   // w→x overlap occupies w[q..)
+    const midCls = e.ovl > q ? 'hlx' : '';
+    const line2 = `r${e.w}  ${pad(o1)}<span class="hlb">${esc(b.slice(0, lo))}</span>` +
+      (midCls ? `<span class="${midCls}">${esc(b.slice(lo, hi))}</span>` : esc(b.slice(lo, hi))) +
+      `<span class="hl">${esc(b.slice(hi))}</span>`;
+    const line3 = `r${f.w}  ${pad(o2)}<span class="hl">${esc(c.slice(0, f.ovl))}</span>${esc(c.slice(f.ovl))}`;
+    return `<pre>${line1}\n${line2}\n${line3}</pre>`;
+  }
+
+  function renderTables(v) {
+    // reads
+    let o = '<table class="t"><tr><th>id</th><th>sequence</th><th>len</th><th>status</th></tr>';
+    for (const r of M.reads) {
+      const rm = M.removed.find(x => x.id === r.id);
+      const cls = [];
+      if (rm && v.containedDone.has(r.id)) cls.push('contained');
+      const isCur = v.cur && ((v.cur.stage === 'overlap' && M.kept[v.cur.vi].id === r.id) || (v.cur.stage === 'contained' && !v.cur.none && M.removed[v.cur.ri].id === r.id) || (v.cur.stage === 'reduce' && v.cur.rec !== undefined && M.tr.records[v.cur.rec].v === r.id));
+      if (isCur) cls.push('cur');
+      let st = '';
+      if (rm && v.containedDone.has(r.id)) st = rm.dup ? `duplicate of r${rm.by}` : `contained in r${rm.by}`;
+      else if (v.unitigOf.has(r.id)) st = `<span class="sw" style="background:var(--u${v.unitigOf.get(r.id) % 6})"></span>u${v.unitigOf.get(r.id)}`;
+      o += `<tr class="${cls.join(' ')}"><td>r${r.id}</td><td>${esc(r.seq)}</td><td>${r.seq.length}</td><td>${st}</td></tr>`;
+    }
+    $('rtable').innerHTML = o + '</table>';
+    // edges
+    o = '<table class="t"><tr><th>edge</th><th>ovl</th><th>hang</th><th>state</th></tr>';
+    let any = false;
+    for (const e of M.edges) {
+      const st = edgeState(e, v); if (st === 'hidden') continue; any = true;
+      const txt = { normal: '', new: 'new', marked: 'transitive', gone: 'removed (transitive)', dropped: 'dropped (non-best)' }[st];
+      o += `<tr class="${st}${hoverEdge === ekey(e) ? ' cur' : ''}"><td>r${e.v} → r${e.w}</td><td>${e.ovl}</td><td>${readById(e.v).seq.length - e.ovl}</td><td>${txt}</td></tr>`;
+    }
+    $('etable').innerHTML = any ? o + '</table>' : '<div class="empty">no edges yet</div>';
+    // unitigs
+    o = '';
+    if (v.final2) {
+      for (const U of M.finalUnitigs) {
+        const parts = U.upath.map((uid, t) => { const sq = M.unitigs[uid].seq; const part = t === 0 ? sq : sq.slice(M.keptUEdges.find(e => e.v === U.upath[t - 1] && e.w === uid).ovl); return `<span style="color:var(--u${uid % 6}s);${t % 2 ? 'text-decoration:underline' : ''}">${esc(part)}</span>`; }).join('');
+        o += `<div class="ucard" style="border-color:var(--u${U.id % 6}s)"><div class="h"><span class="sw" style="background:var(--u${U.id % 6})"></span><b>u${U.id}</b>${U.upath.length > 1 ? ' = ' + U.upath.map(x => 'u' + x).join(' + ') : ''}: ${U.path.map(id => 'r' + id).join(' → ')} · ${U.seq.length} bp</div><pre>${parts}</pre></div>`;
+      }
+    } else {
+      const shown = M.unitigs.filter(u => v.unitigOf.has(u.path[0]));
+      for (const u of shown) {
+        const isCur = v.cur && v.cur.stage === 'compact' && v.cur.ui === u.id;
+        const coloured = u.path.map((id, t) => { const sq = readById(id).seq; const part = t === 0 ? sq : sq.slice(u.pedges[t - 1].ovl); return `<span style="color:var(--u${u.id % 6}s);${t % 2 ? 'text-decoration:underline' : ''}">${esc(part)}</span>`; }).join('');
+        o += `<div class="ucard" style="border-color:var(--u${u.id % 6}s);${isCur ? 'box-shadow:0 0 0 2px var(--curbg)' : ''}"><div class="h"><span class="sw" style="background:var(--u${u.id % 6})"></span><b>u${u.id}</b>: ${u.path.map(id => 'r' + id).join(' → ')} · ${u.seq.length} bp</div><pre>${coloured}</pre></div>`;
+      }
+    }
+    $('utigs').innerHTML = o || '<div class="empty">unitigs appear in the compaction stage</div>';
+  }
+
+  function renderTabs(v) {
+    const vs = STAGES, ci = v.cur ? vs.indexOf(v.cur.stage) : -1;
+    let o = '<span class="muted">Stages:</span>';
+    vs.forEach((st, i) => { o += `${i ? '<span class="sep">›</span>' : ''}<button class="${i === ci ? 'on' : i < ci ? 'past' : ''}" data-stage="${st}" title="Jump to the start of this stage">${i + 1} ${STAGE_NAME[st]}</button>`; });
+    $('tabs').innerHTML = o;
+  }
+
+  function explain(v) {
+    const c = v.cur;
+    if (!c) return `<span class="muted">${M.reads.length} reads, nothing computed yet. Press → to start.</span>`;
+    const rl = id => `<span class="mono">r${id} ${esc(readById(id).seq)}</span>`;
+    if (c.stage === 'contained') {
+      if (c.none) return 'No read is a duplicate or a substring of another read, so all reads take part in the graph. <span class="muted">(Contained reads carry no extra layout information and would only add edges, so assemblers drop them first.)</span>';
+      const r = M.removed[c.ri];
+      return `${rl(r.id)} is ${r.dup ? 'an exact duplicate of' : 'contained in'} ${rl(r.by)}: it is removed from the graph.`;
+    }
+    if (c.stage === 'overlap') {
+      const vid = M.kept[c.vi].id, list = M.checks.get(vid), acc = list.filter(x => x.ok), rej = list.filter(x => !x.ok);
+      let o = `Read ${rl(vid)}: compare its suffixes with the prefixes of every other read. `;
+      o += acc.length ? `<span class="c-new"><b>${acc.length} overlap${acc.length > 1 ? 's' : ''} ≥ ${M.minOvl} bp</b></span>: ${acc.map(x => `r${x.w} (${x.raw})`).join(', ')}.` : `<b>No</b> suffix–prefix match of ≥ ${M.minOvl} bp.`;
+      const short = rej.filter(x => x.raw > 0);
+      if (short.length) o += ` <span class="muted">Too short to trust: ${short.map(x => `r${x.w} (${x.raw} bp)`).join(', ')}.</span>`;
+      return o;
+    }
+    if (c.stage === 'reduce') {
+      if (c.apply) {
+        const n = M.tr.reduced.size;
+        let o = n ? `Remove the ${n} transitive edge${n > 1 ? 's' : ''}. ` : 'No transitive edges to remove. ';
+        if (M.edges.some(e => !M.tr.reduced.has(ekey(e)) && M.edges.some(f => f.v === e.v && f.w !== e.w && M.edges.some(g => g.v === f.w && g.w === e.w))))
+          o += 'An edge that is reachable by a longer path but whose overhangs do not add up (graph-transitive but not overlap-transitive) is kept: its overlap is a coincidence of the sequence, not implied by the other reads.';
+        return o;
+      }
+      const rec = M.tr.records[c.rec], hang = M.tr.hang;
+      let o = `Vertex ${rl(rec.v)} has ${M.edges.filter(e => e.v === rec.v).length} out-edges; the longest overhang is ${rec.longest}. For each out-neighbour w in order of overhang, look one edge further: v→w→x.`;
+      if (!rec.marked.length) return o + ' <b>No</b> two-step path lands on another out-neighbour with matching overhangs, so nothing is reduced here.';
+      rec.marked.forEach(m => { o += `<span class="ev"><span class="c-tr">r${rec.v}→r${m.via} (${hang(m.e)}) + r${m.via}→r${m.g.w} (${hang(m.f)}) = ${hang(m.e) + hang(m.f)} = r${rec.v}→r${m.g.w} (${hang(m.g)})</span>: the edge r${rec.v}→r${m.g.w} is transitive, mark it.</span>`; });
+      return o;
+    }
+    if (c.stage === 'best') {
+      if (!M.best.removed.length) return 'Every edge of the unitig graph is the longest out-edge of its source or the longest in-edge of its target; nothing to drop.';
+      let o = `Drop unitig edges that are neither the best out-edge of their source nor the best in-edge of their target (${M.best.removed.length}). Such an edge is usually a coincidental short overlap:`;
+      M.best.removed.forEach(x => { o += `<span class="ev"><span class="c-drop">u${x.e.v}→u${x.e.w} (${x.e.ovl})</span>: u${x.e.v} prefers u${x.betterOut.w} (${x.betterOut.ovl}) and u${x.e.w} prefers u${x.betterIn.v} (${x.betterIn.ovl}).</span>`; });
+      return o;
+    }
+    if (c.stage === 'final') {
+      const n = M.finalUnitigs.length;
+      const merged = M.finalUnitigs.filter(U => U.upath.length > 1);
+      return `<b>Final unitig graph:</b> compact again after dropping ${M.best.removed.length} edge${M.best.removed.length === 1 ? '' : 's'}${merged.length ? ' — ' + merged.map(U => U.upath.map(x => 'u' + x).join(' + ') + ' → u' + U.id).join(', ') : ''}. ` +
+        (n === 1 ? 'The graph is a single path, so the whole genome is one unitig.' : `${n} unitigs remain; the surviving branches cannot be resolved with these reads (change the minimum overlap to see the effect).`);
+    }
+    if (c.stage === 'compact') {
+      const u = M.unitigs[c.ui];
+      if (u.path.length === 1) return `Unitig <b>u${u.id}</b> is the single read ${rl(u.path[0])}: its neighbours branch, so the path cannot be extended.`;
+      return `Unitig <b>u${u.id}</b>: walk ${u.path.map(id => 'r' + id).join(' → ')} while every inner vertex has exactly one edge in and one out; append each read's overhang to build <span class="mono">${esc(u.seq)}</span> (${u.seq.length} bp).`;
+    }
+    const n = M.unitigs.length;
+    return `<b>Unitig graph:</b> ${n} unitig${n > 1 ? 's' : ''} and ${M.uedges.length} edge${M.uedges.length === 1 ? '' : 's'} between them. ` +
+      (n > 1 ? 'Branches end unitigs: real repeats, or coincidental overlaps such as a graph-transitive edge. Next, drop overlaps that are not the best at either end.' : 'The graph is a single path, so the whole genome is one unitig.');
+  }
+
+  function renderDetail(v) {
+    if (hoverEdge) {
+      const e = M.edges.find(x => ekey(x) === hoverEdge);
+      if (e) {
+        // an edge already marked transitive is explained by its v→w→x triple
+        let m = null;
+        if (v.marked.has(hoverEdge)) for (const rec of M.tr.records) { m = rec.marked.find(x => ekey(x.g) === hoverEdge) || m; }
+        $('detail').innerHTML = m ? triBlock(m) : ovlBlock(e);
+        return;
+      }
+    }
+    const c = v.cur;
+    if (c && c.stage === 'overlap') {
+      const vid = M.kept[c.vi].id;
+      $('detail').innerHTML = M.edges.filter(e => e.v === vid).map(e => ovlBlock(e, 'hlb')).join('');
+    } else if (c && c.stage === 'reduce' && c.rec !== undefined) {
+      const rec = M.tr.records[c.rec];
+      $('detail').innerHTML = rec.marked.map(triBlock).join('');
+    } else $('detail').innerHTML = '';
+  }
+
+  function render() {
+    const v = view();
+    renderTabs(v); renderGraph(v); renderTables(v); renderDetail(v);
+    const stName = v.cur ? STAGE_NAME[v.cur.stage] : 'reads';
+    const nE = M.edges.filter(e => edgeState(e, v) === 'normal' || edgeState(e, v) === 'new' || edgeState(e, v) === 'marked').length;
+    $('status').innerHTML = `Stage: <b>${stName}</b> · step ${s} / ${S()} · ${M.kept.length} reads in graph · ${nE} edges · min overlap ${M.minOvl}`;
+    $('explain').innerHTML = explain(v);
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------------- events ----------------
+  const nextStage = () => {
+    const c = s > 0 ? M.steps[s - 1] : null;
+    const vs = STAGES;
+    if (!c) { setS(stageEnd(vs[0])); return; }
+    const e = stageEnd(c.stage);
+    if (s < e) setS(e); else { const i = vs.indexOf(c.stage); setS(i + 1 < vs.length ? stageEnd(vs[i + 1]) : S()); }
+  };
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnStage').addEventListener('click', nextStage);
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-stage]'); if (b) setS(stageStart(b.dataset.stage)); });
+  $('reads').addEventListener('input', rebuild);
+  $('minOvl').addEventListener('input', rebuild);
+  // hover edges
+  $('graph').addEventListener('mouseover', e => { const g = e.target.closest('g.edge'); if (g && g.closest('svg').dataset.kind === 'r') { hoverEdge = g.dataset.v + '>' + g.dataset.w; render(); } });
+  $('graph').addEventListener('mouseout', e => { const g = e.target.closest('g.edge'); if (g && hoverEdge && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('g.edge'))) { hoverEdge = null; render(); } });
+  // drag nodes
+  $('graph').addEventListener('pointerdown', e => {
+    const g = e.target.closest('g.node'); if (!g) return;
+    const svg = g.closest('svg'), kind = svg.dataset.kind, id = +g.dataset.id, pos = kind === 'u' ? posU : kind === 'f' ? posF : posR;
+    const r = svg.getBoundingClientRect(), p = pos.get(id), pad = +svg.dataset.pad || 0;
+    drag = { kind, id, dx: p.x - (e.clientX - r.left), dy: p.y - (e.clientY - r.top - pad) };
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const svg = $('graph').querySelector('svg'); if (!svg) return;
+    const r = svg.getBoundingClientRect(), pos = drag.kind === 'u' ? posU : drag.kind === 'f' ? posF : posR, pad = +svg.dataset.pad || 0;
+    pos.set(drag.id, { x: Math.max(10, e.clientX - r.left + drag.dx), y: Math.max(14, e.clientY - r.top - pad + drag.dy) });
+    render();
+  });
+  window.addEventListener('pointerup', () => { drag = null; });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'n': case 'N': nextStage(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+    }
+  });
+
+  rebuild();
+})();
+</script>
+</body>
+</html>

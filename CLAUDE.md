@@ -18,6 +18,9 @@ working when opened as a local `file://` URL.
 - `bwa-aln.html`: ungapped bwa-aln (`bwt_match_gap` without indels): prefix trie with SA
   intervals drawn as in the slides, D-array lower bound, priority-stack backtracking, and a
   bowtie-style mode without the bound for comparison.
+- `ovasm.html`: toy overlap-graph assembler (exact dove-tail overlaps, Myers transitive
+  reduction, optional best-overlap filter, unitig compaction) with a built-in layered graph
+  layout (`layoutDAG`, no library) and draggable nodes.
 
 ## Developing and checking
 
@@ -39,7 +42,7 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
 ```
 
 Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
-`runSearch`) free of DOM access
+`runSearch`, `buildModel` and the ovasm helpers) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
