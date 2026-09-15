@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sequence Alignment Demos</title>
+<title>Sequence Algorithm Demos</title>
 <style>
   body {
     font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -26,9 +26,10 @@
 </style>
 </head>
 <body>
-<h1>Sequence alignment demos</h1>
-<p class="sub">Interactive, single-page teaching demos for dynamic-programming alignment. Each page runs entirely in the browser:
-type your own sequences and step through the algorithm with the buttons or the arrow keys.</p>
+<h1>Interactive demos of sequence algorithms</h1>
+<p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise alignment, read mapping and
+genome assembly. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
+buttons or the arrow keys and watch every intermediate state.</p>
 
 <ol>
   <li><a href="edit-distance.html">
@@ -48,12 +49,12 @@ type your own sequences and step through the algorithm with the buttons or the a
   </a></li>
   <li><a href="bwa-aln.html">
     <span class="num">4</span><span class="name">bwa-aln: backtracking on the prefix trie</span>
-    <div class="desc">Read a short query backwards through the prefix trie of the reference, where every node holds a suffix-array interval, and try mismatches from a priority stack. A precomputed lower bound D prunes hopeless branches; switch to bowtie-style mode to see the difference.</div>
+    <div class="desc">Read a short query backwards through the prefix trie of the reference, where every node holds a suffix-array interval, and try mismatches from a priority stack. Turn on the bounded mode to see how a precomputed lower bound D prunes hopeless branches.</div>
     <div class="tags">FM-index · backward search · bounded backtracking</div>
   </a></li>
   <li><a href="ovasm.html">
     <span class="num">5</span><span class="name">Assembly with an overlap graph</span>
-    <div class="desc">From a handful of error-free reads: find exact dove-tail overlaps, remove transitive edges, optionally keep only the best overlaps, and compact non-branching paths into unitigs. The graph is drawn live and can be rearranged by dragging.</div>
+    <div class="desc">From a handful of error-free reads: find exact dove-tail overlaps, remove transitive edges, compact non-branching paths into unitigs, then drop non-best overlaps and compact again. The graph is drawn live and can be rearranged by dragging.</div>
     <div class="tags">overlap graph · transitive reduction · unitigs</div>
   </a></li>
 </ol>
