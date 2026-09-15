@@ -122,10 +122,11 @@
 
 <div class="controls">
   <label>Example <select id="selEx">
-    <option value="ACGTAT">Simple</option>
-    <option value="TGTC">Seed missing due to striding</option>
-    <option value="TTAGTC">Seed missing due to mismatch</option>
-    <option value="TTAGT">Seed missing due to long seed</option>
+    <option value="simple">Simple</option>
+    <option value="stride">Seed missing due to striding</option>
+    <option value="mismatch">Seed missing due to mismatch</option>
+    <option value="long">Seed missing due to long seed</option>
+    <option value="wrong">Wrong mapping due to long seed</option>
   </select></label>
 </div>
 <div class="controls">
@@ -469,7 +470,14 @@
   });
   chkDots.addEventListener('change', render);
   const EX_REF = 'TGGCGTAGCTCAGATCAACGTTTGTCATTGGCATATATA';
-  $('selEx').addEventListener('change', () => { elRef.value = EX_REF; elQry.value = $('selEx').value; rebuild(); });
+  const EXAMPLES = {   // query and reference-word stride for each example; k is left as set
+    simple: { qry: 'ACGTAT', stride: 'k' },
+    stride: { qry: 'TGTC', stride: 'k' },
+    mismatch: { qry: 'TTAGTC', stride: 'k' },
+    long: { qry: 'TTAGT', stride: 'k' },
+    wrong: { qry: 'TTAGT', stride: '1' },
+  };
+  $('selEx').addEventListener('change', () => { const ex = EXAMPLES[$('selEx').value]; elRef.value = EX_REF; elQry.value = ex.qry; selStride.value = ex.stride; rebuild(); });
   for (const el of [elRef, elQry]) el.addEventListener('input', rebuild);
   for (const el of [selK, selStride]) el.addEventListener('change', rebuild);
   document.addEventListener('keydown', e => {
