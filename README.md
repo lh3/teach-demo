@@ -25,10 +25,12 @@ so that this independence holds.
 
 ## Use
 
-Open a page in a browser, or visit the GitHub Pages site built from this
+Open a page in a browser, or visit the [GitHub Pages site][gh] built from this
 repository. Common keys on every page: `→` step, `←` back, `f` run all, `r` reset;
 each page lists its own extras in the hint paragraph under its controls.
 
 ## License
 
 MIT. See `LICENSE`.
+
+[gh]: lh3.github.io/teach-demo/
