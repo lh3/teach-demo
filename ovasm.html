@@ -31,7 +31,11 @@
   .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
   .top { display: grid; grid-template-columns: auto minmax(300px, 760px); gap: 0 28px; align-items: start; margin-bottom: 12px; justify-content: start; }
   .top .hint { margin: 0; }
-  .readsbox { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color: #444; }
+  .readsbox { display: flex; gap: 12px; align-items: flex-start; font-size: .9rem; color: #444; }
+  .readsbox label { display: flex; flex-direction: column; gap: 4px; }
+  .examples { display: flex; flex-direction: column; gap: 6px; padding-top: 22px; }
+  .examples span { font-size: .8rem; color: #777; margin-top: -22px; }
+  .examples button { padding: 3px 10px; font-size: .9rem; min-width: 5.5em; }
   @media (max-width: 900px) { .top { grid-template-columns: 1fr; } }
   kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
@@ -105,7 +109,14 @@
 <h1>Assembly with an overlap graph: overlap, reduce, compact</h1>
 
 <div class="top">
-  <label class="readsbox">Reads (one per line)<textarea id="reads" spellcheck="false">TGCAAG
+  <div class="readsbox">
+    <div class="examples">
+      <span>Examples</span>
+      <button data-ex="linear" title="A single path: one unitig after cleaning">Linear</button>
+      <button data-ex="tip" title="A dead-end branch caused by a read that disagrees near its end">Tip</button>
+      <button data-ex="bubble" title="Two paths that diverge and rejoin">Bubble</button>
+    </div>
+    <label>Reads (one per line)<textarea id="reads" spellcheck="false">TGCAAG
 CAAGGGCTG
 GGGCTGTGA
 CTGTGATAG
@@ -113,6 +124,7 @@ GTGATAGACTC
 TAGACTCGCTG
 ACTCGCTGAT
 GCTGATGC</textarea></label>
+  </div>
   <p class="hint">
       Reads are single-stranded and error-free. <b>Overlap:</b> for every ordered pair, the longest exact match
       between a suffix of one read and a prefix of the other (a dove-tail) of at least the minimum length becomes an edge.
@@ -676,6 +688,12 @@ GCTGATGC</textarea></label>
   $('btnRun').addEventListener('click', () => setS(S()));
   $('btnReset').addEventListener('click', () => setS(0));
   $('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-stage]'); if (b) setS(stageStart(b.dataset.stage)); });
+  const EXAMPLES = {
+    linear: ['TGCAAG', 'CAAGGGCTG', 'GGGCTGTGA', 'CTGTGATAG', 'GTGATAGACTC', 'TAGACTCGCTG', 'ACTCGCTGAT', 'GCTGATGC'],
+    tip: ['TGCAAG', 'CAAGGGCTG', 'GGGCTGTGA', 'CTGTGATAG', 'GTGATAGACTC', 'TGATAGACAC', 'TAGACTCGCTG', 'AGACTCGCT', 'ACTCGCTGAT', 'GCTGATGC'],
+    bubble: ['TGCAAGGG', 'AAGGGCTGT', 'GGCTGTGATA', 'CTGTGAAAGGCT', 'TGAAAGGCTCGC', 'GATAGACTCGCT', 'GACTCGCTGA', 'TCGCTGATGC'],
+  };
+  document.querySelectorAll('.examples button').forEach(b => b.addEventListener('click', () => { $('reads').value = EXAMPLES[b.dataset.ex].join('\n'); rebuild(); }));
   $('reads').addEventListener('input', rebuild);
   $('minOvl').addEventListener('input', rebuild);
   // hover edges
