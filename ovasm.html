@@ -141,6 +141,7 @@ GCTGATGC</textarea></label>
   <button id="btnRun" title="Run to the end (f)">Run all</button>
   <button id="btnReset" title="Clear (r)">Reset</button>
   <label>Min overlap <input type="number" id="minOvl" value="4" min="1" max="12"></label>
+  <button id="btnKmer" title="Replace the reads by their distinct (min overlap + 1)-mers: the overlap graph then becomes a vertex-based de Bruijn graph">Kmerize</button>
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -183,7 +184,7 @@ GCTGATGC</textarea></label>
     for (const line of text.split(/\r?\n/)) {
       const seq = line.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 30);
       if (seq) out.push({ id: out.length, seq });
-      if (out.length >= 20) break;
+      if (out.length >= 60) break;
     }
     return out;
   }
@@ -672,6 +673,7 @@ GCTGATGC</textarea></label>
     $('explain').innerHTML = explain(v);
     $('btnBack').disabled = s === 0;
     $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = s === S();
+    $('btnKmer').disabled = !M.reads.some(r => r.seq.length > M.minOvl + 1);
   }
 
   // ---------------- events ----------------
@@ -694,6 +696,11 @@ GCTGATGC</textarea></label>
     bubble: ['TGCAAGGG', 'AAGGGCTGT', 'GGCTGTGATA', 'CTGTGAAAGGCT', 'TGAAAGGCTCGC', 'GATAGACTCGCT', 'GACTCGCTGA', 'TCGCTGATGC'],
   };
   document.querySelectorAll('.examples button').forEach(b => b.addEventListener('click', () => { $('reads').value = EXAMPLES[b.dataset.ex].join('\n'); rebuild(); }));
+  $('btnKmer').addEventListener('click', () => {   // distinct (minOvl+1)-mers in order of first occurrence; shorter reads vanish
+    const k = M.minOvl + 1, seen = new Set(), out = [];
+    for (const r of M.reads) for (let i = 0; i + k <= r.seq.length; i++) { const km = r.seq.substr(i, k); if (!seen.has(km)) { seen.add(km); out.push(km); } }
+    $('reads').value = out.join('\n'); rebuild();
+  });
   $('reads').addEventListener('input', rebuild);
   $('minOvl').addEventListener('input', rebuild);
   // hover edges
