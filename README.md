@@ -1,4 +1,5 @@
-# teach-demo
+> [!Warning]
+> This project is vibe coded with Claude Code.
 
 Interactive, single-page demos of core sequence-analysis algorithms, written for
 teaching. Each page takes toy inputs you can edit and lets you step through the
