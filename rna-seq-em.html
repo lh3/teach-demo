@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RNA-seq Quantification with EM</title>
+<style>
+  :root {
+    --acc: #1e6fd9; --accbg: #d6e6fb;
+    --cur: #e6a800; --curbg: #fff3c4;
+    --true: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { font: inherit; width: 5.5em; padding: 3px 4px; }
+  input[type=text], textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; }
+  textarea { width: 26ch; height: 13em; resize: vertical; display: block; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  button.small { font-size: .8rem; padding: 1px 9px; margin-left: 8px; vertical-align: 1px; font-weight: 400; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .muted { color: #888; }
+  .err { color: var(--true); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .note { font-size: .85rem; color: #888; margin: 2px 0 6px; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  .c-true { color: var(--true); }
+
+  .two { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 2fr); gap: 0 28px; align-items: start; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+
+  #comp { overflow-x: auto; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .seg rect { stroke: #fff; stroke-width: 1.5; cursor: default; }
+  .seg.hi rect { stroke: #222; stroke-width: 2.5; }
+  .seg text { font: 700 13px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #222; pointer-events: none; }
+  .cov rect { fill: #666; opacity: .55; }
+  .tlab { font: 700 14px system-ui, sans-serif; }
+  .tsub { font: 11px system-ui, sans-serif; fill: #666; }
+  .end { font: 11px system-ui, sans-serif; fill: #999; text-anchor: middle; dominant-baseline: central; }
+
+  table { border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 3px 9px; border-bottom: 1px solid #e3e3e3; text-align: right; white-space: nowrap; vertical-align: middle; }
+  th { color: #555; font-weight: 600; border-bottom: 1.5px solid #bbb; }
+  td.l, th.l { text-align: left; }
+  .bar { position: relative; display: inline-block; width: 170px; height: 14px; background: #f0f0f0; vertical-align: middle; border-radius: 2px; }
+  .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--acc); border-radius: 2px; }
+  .bar .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--true); }
+  #estep { overflow-x: auto; }
+  .estep td.z { color: #ccc; }
+  .estep .pr { font-weight: 600; }
+  .estep .ex { color: #666; font-size: .8em; }
+  .estep tr.pat { cursor: default; }
+  .estep tr.pat:hover { background: var(--curbg); }
+  .estep tr.skip td { color: #999; font-style: italic; }
+  .estep tfoot td { border-top: 1.5px solid #bbb; border-bottom: none; font-weight: 600; }
+  .estep tfoot tr.q td { font-weight: 400; }
+  .estep tfoot tr.p td { font-weight: 600; color: var(--acc); }
+
+  .ax line { stroke: #bbb; } .ax text { font: 10px system-ui, sans-serif; fill: #777; }
+  .ln { fill: none; stroke-width: 2; }
+  .tru { fill: none; stroke-width: 1.2; stroke-dasharray: 4 3; opacity: .85; }
+  .kmark { stroke: var(--cur); stroke-width: 2; }
+  .dotk { stroke: #fff; stroke-width: 1.5; }
+  .clab { font: 700 11px system-ui, sans-serif; dominant-baseline: central; }
+  .hit { fill: transparent; cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 0; color: #444; }
+  .legend .ln2 { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid; }
+  .legend .ln2.dash { border-top-style: dashed; border-color: var(--true); }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+</style>
+</head>
+<body>
+<h1>RNA-seq quantification: resolving multi-mapped reads with EM</h1>
+
+<div class="controls">
+  <label>Blocks N <input type="number" id="nBlocks" value="30" min="5" max="40"></label>
+  <label>Transcripts n <input type="number" id="nTx" value="7" min="1" max="10"></label>
+  <label>Reads M <input type="number" id="nReads" value="1000" min="1" max="100000" step="100"></label>
+  <label>Read position <select id="selBias">
+    <option value="none" selected>uniform along transcript</option>
+    <option value="5">5′-end bias (exponential)</option>
+    <option value="3">3′-end bias (exponential)</option>
+  </select></label>
+  <label><input type="checkbox" id="chkRepeat"> Within-transcript repeats</label>
+  <label>Seed <input type="number" id="seed" value="42" min="0" max="999999"></label>
+  <button id="btnSim" title="Draw new transcripts and reads (s)">Re-simulate</button>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous iteration (←)">◀ Back</button>
+  <button id="btnStep" title="One EM iteration (→)">Step ▶</button>
+  <button id="btnRun" title="Run until convergence (f)">Run all</button>
+  <button id="btnReset" title="Back to the uniform start (r)">Reset</button>
+</div>
+
+<p class="hint">
+  <b>Simulation:</b> N distinct 300-bp blocks; each transcript is 2–5 blocks, so transcripts share blocks and a read
+  from a shared block is <em>multi-mapped</em>. Transcript fractions p<sub>t</sub> are uniform random; a read picks a
+  transcript in proportion to p<sub>t</sub>·l<sub>t</sub> and a position along it (uniform, or exponential from one end
+  with mean 300 bp). All reads with the same hit pattern δ (hits per transcript) collapse into one line
+  <span class="mono">count: δ<sub>1</sub>,…,δ<sub>n</sub></span>.
+  <b>EM:</b> start with equal nucleotide fractions q<sub>t</sub> = 1/n, then repeat
+  q<sub>t</sub><sup>(k+1)</sup> = (1/R) Σ<sub>i</sub> δ<sub>it</sub>q<sub>t</sub><sup>(k)</sup>/l<sub>t</sub> ⁄ Σ<sub>s</sub>δ<sub>is</sub>q<sub>s</sub><sup>(k)</sup>/l<sub>s</sub>
+  (E-step: split each read among the transcripts it hits by per-base abundance; M-step: average). The transcript
+  fraction is p<sub>t</sub> ∝ q<sub>t</sub>/l<sub>t</sub> and TPM = 10<sup>6</sup>·p<sub>t</sub>.
+  Edit the pattern lines to run EM on your own counts.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> re-simulate.
+</p>
+
+<h2>1 Simulated transcripts <button id="btnComp" class="small" title="Show or hide the transcript drawing">Show transcripts</button></h2>
+<div id="compwrap" hidden>
+  <div class="note">Colour = block identity; grey strip above each transcript = where the simulated reads fell. Hover a block to see which transcripts share it.</div>
+  <div id="compnote" class="note"></div>
+  <div id="comp"></div>
+</div>
+
+<div class="two">
+  <div>
+    <h2>2 Reads by hit pattern (editable)</h2>
+    <textarea id="counts" spellcheck="false"></textarea>
+    <div id="derr" class="err"></div>
+  </div>
+  <div>
+    <h2>3 Estimates at the current iteration</h2>
+    <div id="est"></div>
+  </div>
+</div>
+
+<h2>4 E-step with the current q: how the reads of each pattern are split among the transcripts they hit</h2>
+<div id="estep"></div>
+
+<h2>5 Convergence of the transcript fraction p<sub>t</sub></h2>
+<div id="chart"></div>
+<div class="legend">
+  <span><span class="ln2" style="border-color:#1e6fd9"></span>estimated p<sub>t</sub> by iteration</span>
+  <span><span class="ln2 dash"></span>simulated truth</span>
+  <span><span class="ln2" style="border-color:var(--cur)"></span>current iteration (click the chart to jump)</span>
+</div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const BL = 300, BMIN = 2, BMAX = 5, MU = 300, MAXIT = 500, TOL = 1e-6;
+  const TX_COLORS = ['#1e6fd9', '#d62828', '#2a9d3a', '#c65a11', '#6a3aa0', '#0a8f8f', '#b5179e', '#7a6200', '#3a3f4b', '#8c564b'];
+  const txColor = t => TX_COLORS[t % TX_COLORS.length];
+  const blockColor = c => `hsl(${(c * 7 % 20) * 18}, ${c < 20 ? 70 : 40}%, ${c % 2 ? 68 : 80}%)`;
+  const f3 = x => x.toFixed(3), f4 = x => x.toFixed(4), f1 = x => x.toFixed(1);
+
+  let Sim = null, simText = '', simLens = '', D = null, EM = null, k = 0;
+
+  // ---------- pure model ----------
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // Simulate transcripts made of shared blocks, then M one-base reads; collapse reads into hit patterns.
+  // With repeats on, blocks are drawn with replacement and one transcript A is forced to contain a block
+  // twice; another transcript B is forced to contain that block too, so the repeat is also multi-mapped.
+  function simulate(o, rand) {
+    const N = o.N, n = o.n, M = o.M;
+    const tx = [];
+    for (let t = 0; t < n; t++) {
+      let nb = BMIN + Math.floor(rand() * (BMAX - BMIN + 1));
+      const blocks = [];
+      if (o.repeat) {
+        for (let i = 0; i < nb; i++) blocks.push(Math.floor(rand() * N));
+      } else {
+        nb = Math.min(nb, N);
+        const pool = Array.from({ length: N }, (_, i) => i);
+        for (let i = 0; i < nb; i++) { const j = i + Math.floor(rand() * (N - i)); [pool[i], pool[j]] = [pool[j], pool[i]]; blocks.push(pool[i]); }
+      }
+      tx.push({ blocks, len: nb * BL, p: rand() });
+    }
+    if (o.repeat) {
+      const A = tx[Math.floor(rand() * n)].blocks, i = Math.floor(rand() * A.length);
+      const j = (i + 1 + Math.floor(rand() * (A.length - 1))) % A.length;
+      A[j] = A[i];
+      if (n > 1) {
+        let B; do { B = tx[Math.floor(rand() * n)].blocks; } while (B === A);
+        if (!B.includes(A[i])) B[Math.floor(rand() * B.length)] = A[i];
+      }
+    }
+    const ps = tx.reduce((a, t) => a + t.p, 0); tx.forEach(t => t.p /= ps);
+    const qs = tx.reduce((a, t) => a + t.p * t.len, 0); tx.forEach(t => t.q = t.p * t.len / qs);   // nucleotide fraction
+    const colorOf = new Map();
+    tx.forEach(t => t.blocks.forEach(b => { if (!colorOf.has(b)) colorOf.set(b, colorOf.size); }));
+    const cov = tx.map(t => t.blocks.map(() => 0));   // reads that fell on each block copy
+    for (let i = 0; i < M; i++) {
+      let u = rand(), t = 0;
+      while (t < n - 1 && u >= tx[t].q) { u -= tx[t].q; t++; }
+      const L = tx[t].len; let pos;
+      if (o.bias === 'none') pos = rand() * L;
+      else { const x = -MU * Math.log(1 - rand() * (1 - Math.exp(-L / MU))); pos = o.bias === '5' ? x : L - x; }
+      cov[t][Math.min(tx[t].blocks.length - 1, Math.max(0, Math.floor(pos / BL)))]++;
+    }
+    const byKey = new Map();
+    tx.forEach((t, ti) => t.blocks.forEach((b, bi) => {
+      const delta = tx.map(s => s.blocks.filter(x => x === b).length);
+      const key = delta.join(',');
+      if (!byKey.has(key)) byKey.set(key, { key, delta, count: 0, blocks: new Set(), first: delta.findIndex(x => x > 0) });
+      const e = byKey.get(key); e.count += cov[ti][bi]; e.blocks.add(b);
+    }));
+    const patterns = [...byKey.values()].filter(e => e.count > 0)
+      .map(e => ({ key: e.key, delta: e.delta, count: e.count, first: e.first, blocks: [...e.blocks].sort((a, b) => a - b) }))
+      .sort((a, b) => a.first - b.first || b.count - a.count);
+    return { tx, colorOf, cov, patterns, M, bias: o.bias };
+  }
+
+  // Parse "count: d1,d2,..." lines and the length list.
+  function parseCounts(text, lensText) {
+    const l = lensText.split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (!l.length || l.some(x => !(x > 0))) return { error: 'Transcript lengths must be positive numbers separated by commas.' };
+    const n = l.length, patterns = [];
+    const lines = text.split('\n');
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li].trim(); if (!line) continue;
+      const m = line.match(/^(\d+)\s*:\s*(.+)$/);
+      if (!m) return { error: `Line ${li + 1}: expected "count: d1,d2,…" but got "${line}".` };
+      const delta = m[2].split(/[\s,;]+/).filter(Boolean).map(Number);
+      if (delta.some(x => !Number.isInteger(x) || x < 0)) return { error: `Line ${li + 1}: hit counts must be non-negative integers.` };
+      if (delta.length !== n) return { error: `Line ${li + 1}: ${delta.length} hit counts but the simulation has ${n} transcript${n === 1 ? '' : 's'}.` };
+      patterns.push({ count: +m[1], delta, key: delta.join(',') });
+    }
+    if (!patterns.length) return { error: 'No read patterns: enter lines like "5: 1,0,1".' };
+    return { patterns, l, n };
+  }
+
+  // Eq. 2: nucleotide fraction q -> transcript fraction p.
+  function q2p(q, l) {
+    const p = q.map((x, t) => x / l[t]);
+    const s = p.reduce((a, b) => a + b, 0);
+    return s > 0 ? p.map(x => x / s) : p;
+  }
+
+  // Eq. 3 over collapsed patterns. steps[k] holds q^(k), p^(k) and the E-step computed from q^(k):
+  // resp[i][t] = expected reads of pattern i assigned to t, r[t] = column sums, qn = r / R = q^(k+1).
+  function emSteps(patterns, l, maxIter, tol) {
+    const n = l.length;
+    const R = patterns.reduce((a, pt) => a + (pt.delta.some(d => d > 0) ? pt.count : 0), 0);
+    const estep = q => {
+      const resp = patterns.map(pt => {
+        const w = pt.delta.map((d, t) => d * q[t] / l[t]);
+        const s = w.reduce((a, b) => a + b, 0);
+        return s > 0 ? w.map(x => pt.count * x / s) : w.map(() => 0);
+      });
+      const r = Array.from({ length: n }, (_, t) => resp.reduce((a, row) => a + row[t], 0));
+      const qn = R > 0 ? r.map(x => x / R) : q.slice();
+      return { resp, r, qn };
+    };
+    const steps = [];
+    let q = Array(n).fill(1 / n), converged = false;
+    for (let it = 0; ; it++) {
+      const e = estep(q);
+      const prev = steps.length ? steps[steps.length - 1].q : null;
+      steps.push({ q, p: q2p(q, l), resp: e.resp, r: e.r, qn: e.qn, pn: q2p(e.qn, l), delta: prev ? Math.max(...q.map((x, t) => Math.abs(x - prev[t]))) : null });
+      const d = Math.max(...e.qn.map((x, t) => Math.abs(x - q[t])));
+      if (d < tol) { converged = true; break; }
+      if (it >= maxIter) break;
+      q = e.qn;
+    }
+    return { steps, R, n, converged };
+  }
+
+  // ---------- state ----------
+  function resim(newSeed) {
+    if (newSeed) $('seed').value = Math.floor(Math.random() * 1e6);
+    const o = {
+      N: Math.max(5, Math.min(40, +$('nBlocks').value || 30)),
+      n: Math.max(1, Math.min(10, +$('nTx').value || 7)),
+      M: Math.max(1, Math.min(100000, +$('nReads').value || 1000)),
+      bias: $('selBias').value, repeat: $('chkRepeat').checked,
+    };
+    Sim = simulate(o, mulberry32(+$('seed').value || 0));
+    simText = Sim.patterns.map(pt => `${pt.count}: ${pt.key}`).join('\n');
+    simLens = Sim.tx.map(t => t.len).join(', ');
+    $('counts').value = simText;
+    rebuild();
+  }
+  function rebuild() {
+    D = parseCounts($('counts').value, simLens);   // lengths come from the simulation
+    EM = D.error ? null : emSteps(D.patterns, D.l, MAXIT, TOL);
+    k = 0;
+    render();
+  }
+  const K = () => EM ? EM.steps.length - 1 : 0;
+  const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
+  const edited = () => $('counts').value.trim() !== simText.trim();
+  const showTrue = () => Sim && EM && Sim.tx.length === EM.n;
+  const simPattern = key => Sim.patterns.find(pt => pt.key === key);
+
+  // ---------- rendering ----------
+  const LEFT = 190, BW = 40, BH = 26, CH = 16, ROW = 62, TOP = 6;
+
+  function renderComp() {
+    const { tx, colorOf, cov } = Sim;
+    const maxCov = Math.max(1, ...cov.flat());
+    const W = LEFT + BMAX * BW + 40, H = TOP + tx.length * ROW;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    tx.forEach((t, ti) => {
+      const y = TOP + ti * ROW, yb = y + CH + 4, reads = cov[ti].reduce((a, b) => a + b, 0);
+      o += `<text class="tlab" x="0" y="${yb + BH / 2 - 5}" fill="${txColor(ti)}">T${ti + 1}</text>`;
+      o += `<text class="tsub" x="0" y="${yb + BH / 2 + 10}">${t.len} bp · p = ${f3(t.p)} · ${reads} reads</text>`;
+      o += `<text class="end" x="${LEFT - 12}" y="${yb + BH / 2}">5′</text>`;
+      t.blocks.forEach((b, bi) => {
+        const x = LEFT + bi * BW, h = cov[ti][bi] / maxCov * CH;
+        o += `<g class="cov"><rect x="${x + 1}" y="${y + CH - h}" width="${BW - 2}" height="${h}"><title>${cov[ti][bi]} reads</title></rect></g>`;
+        o += `<g class="seg" data-b="${b}"><rect x="${x}" y="${yb}" width="${BW}" height="${BH}" fill="${blockColor(colorOf.get(b))}"/><text x="${x + BW / 2}" y="${yb + BH / 2}">${b + 1}</text></g>`;
+      });
+      o += `<text class="end" x="${LEFT + t.blocks.length * BW + 12}" y="${yb + BH / 2}">3′</text>`;
+    });
+    o += '</svg>';
+    $('comp').innerHTML = o;
+    $('compnote').textContent = edited() ? 'The patterns have been edited: this panel and the dashed “truth” lines still show the last simulation.' : '';
+  }
+
+  function renderEst() {
+    if (!EM) { $('est').innerHTML = ''; return; }
+    const st = EM.steps[k], tr = showTrue();
+    const pmax = Math.max(1e-9, ...st.p, ...(tr ? Sim.tx.map(t => t.p) : []));
+    let o = `<table><thead><tr><th class="l">Transcript</th><th>l<sub>t</sub></th>${tr ? '<th class="c-true">true p<sub>t</sub></th>' : ''}<th>q<sub>t</sub><sup>(${k})</sup></th><th>p<sub>t</sub><sup>(${k})</sup></th><th class="l">estimate${tr ? ' <span class="c-true">| truth</span>' : ''}</th></tr></thead><tbody>`;
+    for (let t = 0; t < EM.n; t++) {
+      o += `<tr><td class="l" style="color:${txColor(t)};font-weight:700">T${t + 1}</td><td>${D.l[t]}</td>${tr ? `<td class="c-true">${f4(Sim.tx[t].p)}</td>` : ''}<td>${f4(st.q[t])}</td><td><b>${f4(st.p[t])}</b></td>` +
+        `<td class="l"><span class="bar"><span class="fill" style="width:${st.p[t] / pmax * 100}%;background:${txColor(t)}"></span>${tr ? `<span class="tick" style="left:${Sim.tx[t].p / pmax * 100}%"></span>` : ''}</span></td></tr>`;
+    }
+    o += '</tbody></table>';
+    if (tr) {
+      const err = Math.max(...st.p.map((x, t) => Math.abs(x - Sim.tx[t].p)));
+      o += `<div class="note">Largest |p̂<sub>t</sub> − p<sub>t</sub>| = ${f4(err)}</div>`;
+    }
+    $('est').innerHTML = o;
+  }
+
+  function renderEstep() {
+    if (!EM) { $('estep').innerHTML = ''; return; }
+    const st = EM.steps[k], n = EM.n;
+    let o = `<table class="estep"><thead><tr><th class="l">hit pattern δ<sub>i</sub></th><th>reads</th>`;
+    for (let t = 0; t < n; t++) o += `<th style="color:${txColor(t)}">T${t + 1}<br><span class="muted">l = ${D.l[t]}</span></th>`;
+    o += '</tr></thead><tbody>';
+    D.patterns.forEach((pt, pi) => {
+      const w = pt.delta.map((d, t) => d * st.q[t] / D.l[t]), s = w.reduce((a, b) => a + b, 0);
+      if (s === 0) { o += `<tr class="skip"><td class="l mono">${pt.key}</td><td>${pt.count}</td><td colspan="${n}" class="l">hits no transcript: skipped, not counted in R</td></tr>`; return; }
+      o += `<tr class="pat" data-pi="${pi}"><td class="l mono">${pt.key}</td><td>${pt.count}</td>`;
+      for (let t = 0; t < n; t++) {
+        if (!pt.delta[t]) { o += '<td class="z">·</td>'; continue; }
+        o += `<td><span class="pr">${f3(w[t] / s)}</span><br><span class="ex">${f1(st.resp[pi][t])} reads</span></td>`;
+      }
+      o += '</tr>';
+    });
+    o += `</tbody><tfoot><tr><td class="l">r<sub>t</sub> = Σ expected reads</td><td>R = ${EM.R}</td>${st.r.map(x => `<td>${f1(x)}</td>`).join('')}</tr>`;
+    o += `<tr class="q"><td class="l">q<sub>t</sub><sup>(${k + 1})</sup> = r<sub>t</sub> / R</td><td></td>${st.qn.map(x => `<td>${f4(x)}</td>`).join('')}</tr>`;
+    o += `<tr class="p"><td class="l">p<sub>t</sub><sup>(${k + 1})</sup> ∝ q<sub>t</sub><sup>(${k + 1})</sup> / l<sub>t</sub></td><td></td>${st.pn.map(x => `<td>${f4(x)}</td>`).join('')}</tr></tfoot></table>`;
+    $('estep').innerHTML = o;
+  }
+
+  const CW = 600, CHH = 240, ML = 46, MR = 44, MT = 10, MB = 28;
+  function renderChart() {
+    if (!EM) { $('chart').innerHTML = ''; return; }
+    const steps = EM.steps, KK = steps.length - 1, n = EM.n, tr = showTrue();
+    const iw = CW - ML - MR, ih = CHH - MT - MB;
+    let ymax = Math.max(...steps.map(s => Math.max(...s.p)), ...(tr ? Sim.tx.map(t => t.p) : []));
+    ymax = Math.min(1, Math.max(0.1, Math.ceil(ymax * 10 + 0.5) / 10));
+    const sx = i => ML + (KK ? i / KK * iw : iw / 2), sy = v => MT + ih - v / ymax * ih;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CHH}" viewBox="0 0 ${CW} ${CHH}">`;
+    o += '<g class="ax">';
+    const ystep = ymax > 0.6 ? 0.2 : 0.1;
+    for (let v = 0; v <= ymax + 1e-9; v += ystep) o += `<line x1="${ML}" y1="${sy(v)}" x2="${ML + iw}" y2="${sy(v)}" stroke-dasharray="2 3"/><text x="${ML - 6}" y="${sy(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`;
+    const xstep = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => KK / s <= 10) || 500;
+    for (let i = 0; i <= KK; i += xstep) o += `<line x1="${sx(i)}" y1="${MT + ih}" x2="${sx(i)}" y2="${MT + ih + 4}"/><text x="${sx(i)}" y="${MT + ih + 15}" text-anchor="middle">${i}</text>`;
+    o += `<line x1="${ML}" y1="${MT + ih}" x2="${ML + iw}" y2="${MT + ih}"/><line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT + ih}"/>`;
+    o += `<text x="${ML + iw / 2}" y="${CHH - 2}" text-anchor="middle">EM iteration</text></g>`;
+    for (let t = 0; t < n; t++) {
+      if (tr) o += `<line class="tru" x1="${ML}" y1="${sy(Sim.tx[t].p)}" x2="${ML + iw}" y2="${sy(Sim.tx[t].p)}" stroke="${txColor(t)}"/>`;
+      o += `<polyline class="ln" stroke="${txColor(t)}" points="${steps.map((s, i) => `${sx(i)},${sy(s.p[t])}`).join(' ')}"/>`;
+    }
+    // end labels, pushed apart so they do not overlap
+    const labs = steps[KK].p.map((v, t) => ({ t, y: sy(v) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < labs.length; i++) labs[i].y = Math.max(labs[i].y, labs[i - 1].y + 12);
+    for (let i = labs.length - 1; i >= 0; i--) labs[i].y = Math.min(labs[i].y, (i + 1 < labs.length ? labs[i + 1].y - 12 : MT + ih));
+    for (const lb of labs) o += `<text class="clab" x="${ML + iw + 6}" y="${lb.y}" fill="${txColor(lb.t)}">T${lb.t + 1}</text>`;
+    o += `<line class="kmark" x1="${sx(k)}" y1="${MT}" x2="${sx(k)}" y2="${MT + ih}"/>`;
+    for (let t = 0; t < n; t++) o += `<circle class="dotk" cx="${sx(k)}" cy="${sy(steps[k].p[t])}" r="4" fill="${txColor(t)}"/>`;
+    o += `<rect class="hit" id="chartHit" x="${ML}" y="${MT}" width="${iw}" height="${ih}"/></svg>`;
+    $('chart').innerHTML = o;
+  }
+
+  function showExplainDefault() {
+    if (!EM) { $('explain').innerHTML = `<span class="c-true">${esc(D.error)}</span>`; return; }
+    const st = EM.steps[k], KK = K(), n = EM.n;
+    let o;
+    if (k === 0) {
+      o = `<b>Start:</b> every transcript gets the same nucleotide fraction q<sub>t</sub> = 1/${n}. Under this q, a read with hit pattern δ goes to transcript t with probability δ<sub>t</sub>q<sub>t</sub>/l<sub>t</sub> divided by the same sum over all transcripts it hits: with equal q, shorter transcripts have more copies per base and take the larger share of a shared read. Table 4 shows this split; press → to turn it into q<sup>(1)</sup>.`;
+    } else {
+      o = `<b>Iteration ${k}:</b> E-step — the reads of each pattern were split by the posterior Pr{Z<sub>i</sub> = t} computed from q<sup>(${k - 1})</sup>; M-step — expected reads were summed per transcript (r<sub>t</sub>) and divided by R = ${EM.R} to give q<sup>(${k})</sup>; then p<sub>t</sub> ∝ q<sub>t</sub>/l<sub>t</sub> (Eq. 2). Largest change in q: ${st.delta.toExponential(2)}.`;
+      if (k === KK) {
+        o += EM.converged ? ` <b>Converged</b>: another iteration would move q by less than ${TOL}.` : ` <span class="c-true">Stopped after ${MAXIT} iterations without reaching the tolerance.</span>`;
+        if (showTrue()) {
+          const err = Math.max(...st.p.map((x, t) => Math.abs(x - Sim.tx[t].p)));
+          o += ` Largest error against the simulated truth: ${f4(err)}.`;
+          if (Sim.bias !== 'none' && !edited()) o += ` Reads were biased toward the ${Sim.bias}′ end but the model assumes uniform coverage, so transcripts whose shared blocks sit near or far from that end are over- or under-estimated.`;
+          else if (!edited()) o += ` The remaining error is sampling noise from ${Sim.M} reads; more reads shrink it.`;
+        }
+      }
+    }
+    $('explain').innerHTML = o;
+  }
+
+  function splitText(pt, st) {
+    const w = pt.delta.map((d, t) => d * st.q[t] / D.l[t]), s = w.reduce((a, b) => a + b, 0);
+    if (s === 0) return 'hits no transcript';
+    return w.map((x, t) => x > 0 ? `<span style="color:${txColor(t)}"><b>T${t + 1}</b> ${(x / s * 100).toFixed(1)}% (${f1(pt.count * x / s)} reads)</span>` : '').filter(Boolean).join(', ');
+  }
+  function explainBlock(b) {
+    const occ = Sim.tx.map((t, ti) => ({ ti, m: t.blocks.filter(x => x === b).length })).filter(x => x.m > 0);
+    const key = Sim.tx.map(t => t.blocks.filter(x => x === b).length).join(',');
+    const reads = Sim.tx.reduce((a, t, ti) => a + t.blocks.reduce((c, x, bi) => c + (x === b ? Sim.cov[ti][bi] : 0), 0), 0);
+    let o = `<b>Block ${b + 1}</b> (${BL} bp) is in ${occ.map(x => `<span style="color:${txColor(x.ti)}"><b>T${x.ti + 1}</b>${x.m > 1 ? ' ×' + x.m : ''}</span>`).join(', ')} → a read from it has hit pattern <span class="mono">${key}</span>${occ.length > 1 || occ.some(x => x.m > 1) ? ' (multi-mapped)' : ' (unique)'}; ${reads} simulated read${reads === 1 ? '' : 's'} fell on it.`;
+    if (EM && !edited()) { const pt = D.patterns.find(p => p.key === key); if (pt) o += ` Current split: ${splitText(pt, EM.steps[k])}.`; }
+    $('explain').innerHTML = o;
+  }
+  function explainPattern(pi) {
+    const pt = D.patterns[pi], st = EM.steps[k];
+    const hits = pt.delta.map((d, t) => d ? `<span style="color:${txColor(t)}"><b>T${t + 1}</b>${d > 1 ? ' ×' + d : ''}</span>` : '').filter(Boolean).join(', ');
+    let o = `<b>Pattern <span class="mono">${pt.key}</span></b>: ${pt.count} read${pt.count === 1 ? '' : 's'} hitting ${hits}`;
+    const sp = Sim && !edited() ? simPattern(pt.key) : null;
+    if (sp) o += ` (from block${sp.blocks.length > 1 ? 's' : ''} ${sp.blocks.map(b => b + 1).join(', ')})`;
+    o += `. With q<sup>(${k})</sup> the split is ${splitText(pt, st)}; each transcript's share is δ<sub>t</sub>q<sub>t</sub>/l<sub>t</sub> normalised over the transcripts hit.`;
+    $('explain').innerHTML = o;
+  }
+  const hiBlocks = bs => { for (const g of $('comp').querySelectorAll('g.seg')) g.classList.toggle('hi', bs.has(+g.dataset.b)); };
+
+  function render() {
+    renderComp(); renderEst(); renderEstep(); renderChart();
+    $('derr').textContent = D.error || '';
+    if (EM) {
+      const KK = K(), st = EM.steps[k];
+      const uniq = D.patterns.filter(pt => pt.delta.filter(d => d > 0).length === 1 && Math.max(...pt.delta) === 1).length;
+      const skip = D.patterns.filter(pt => !pt.delta.some(d => d > 0)).length;
+      $('status').innerHTML = `Iteration <b>${k}</b> / ${KK} · R = ${EM.R} reads in ${D.patterns.length} pattern${D.patterns.length === 1 ? '' : 's'} (${uniq} unique, ${D.patterns.length - uniq - skip} multi-mapped${skip ? `, ${skip} skipped` : ''}) · ${EM.n} transcript${EM.n === 1 ? '' : 's'}` +
+        (k > 0 ? ` · max |Δq| = ${st.delta.toExponential(2)}` : '') + (k === KK ? (EM.converged ? ' · converged' : ' · iteration limit') : '');
+    } else $('status').innerHTML = '';
+    showExplainDefault();
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = $('btnRun').disabled = !EM || k === K();
+  }
+
+  // ---------- events ----------
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnRun').addEventListener('click', () => setK(K()));
+  $('btnReset').addEventListener('click', () => setK(0));
+  $('btnSim').addEventListener('click', () => resim(true));
+  $('btnComp').addEventListener('click', () => {
+    const w = $('compwrap'); w.hidden = !w.hidden;
+    $('btnComp').textContent = w.hidden ? 'Show transcripts' : 'Hide transcripts';
+  });
+  for (const id of ['nBlocks', 'nTx', 'nReads', 'seed']) $(id).addEventListener('change', () => resim(false));
+  $('selBias').addEventListener('change', () => resim(false));
+  $('chkRepeat').addEventListener('change', () => resim(false));
+  $('counts').addEventListener('input', rebuild);
+  $('comp').addEventListener('mouseover', e => { const g = e.target.closest('g.seg'); if (g) { hiBlocks(new Set([+g.dataset.b])); explainBlock(+g.dataset.b); } });
+  $('comp').addEventListener('mouseout', e => { if (e.target.closest('g.seg')) { hiBlocks(new Set()); showExplainDefault(); } });
+  $('estep').addEventListener('mouseover', e => {
+    const tr = e.target.closest('tr.pat'); if (!tr || !EM) return;
+    const pt = D.patterns[+tr.dataset.pi], sp = Sim && !edited() ? simPattern(pt.key) : null;
+    hiBlocks(new Set(sp ? sp.blocks : [])); explainPattern(+tr.dataset.pi);
+  });
+  $('estep').addEventListener('mouseout', e => { if (e.target.closest('tr.pat')) { hiBlocks(new Set()); showExplainDefault(); } });
+  $('chart').addEventListener('click', e => {
+    const svg = $('chart').querySelector('svg'); if (!svg || !EM) return;
+    const x = e.clientX - svg.getBoundingClientRect().left;
+    setK(Math.round((x - ML) / (CW - ML - MR) * K()));
+  });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(K()); break;
+      case 'r': case 'R': setK(0); break;
+      case 's': case 'S': resim(true); break;
+    }
+  });
+
+  resim(false);
+})();
+</script>
+</body>
+</html>

@@ -21,6 +21,12 @@ working when opened as a local `file://` URL.
 - `ovasm.html`: toy overlap-graph assembler (exact dove-tail overlaps, Myers transitive
   reduction, optional best-overlap filter, unitig compaction) with a built-in layered graph
   layout (`layoutDAG`, no library) and draggable nodes.
+- `rna-seq-em.html`: EM for RNA-seq quantification (Eq. 3 of the course notes, same maths as
+  `rna-seq-em.py`): simulate transcripts from shared 300-bp blocks and 1-bp reads (uniform or
+  exponential 5'/3' bias, optional within-transcript repeats: one transcript gets a duplicated block that a second
+  transcript also carries), collapse reads into hit patterns in an
+  editable textarea (lengths are fixed by the simulation), then step through EM iterations with the E-step table, estimates vs truth and
+  a convergence chart.
 
 ## Developing and checking
 
@@ -42,7 +48,8 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
 ```
 
 Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
-`runSearch`, `buildModel` and the ovasm helpers) free of DOM access
+`runSearch`, `buildModel`, the ovasm helpers, and `simulate`, `parseCounts`, `emSteps` in
+`rna-seq-em.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
@@ -79,4 +86,5 @@ All demos follow the same pattern; keep new pages consistent with it.
 
 GitHub Pages serves the repo root, so new demos go at the root, are linked from
 `index.html` with relative paths, and must not rely on a server. Slide PDFs the instructor
-drops in (`ond.pdf`, `blast.pdf`) are reference material and are not committed.
+drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`) and the reference script `rna-seq-em.py` are
+reference material and are not committed.
