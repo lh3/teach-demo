@@ -20,7 +20,9 @@
   .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
   .controls label, .params label { display: inline-flex; align-items: center; gap: 6px; }
   input[type=number] { font: inherit; width: 5.5em; padding: 3px 4px; }
-  textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; width: 52ch; max-width: 100%; height: 7em; resize: vertical; display: block; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; width: 100%; box-sizing: border-box; height: 4.5em; resize: vertical; display: block; background: #fafafa; color: #222; }
   select { font: inherit; padding: 3px 4px; }
   button { font: inherit; padding: 4px 12px; cursor: pointer; }
   button:disabled { cursor: default; opacity: .5; }
@@ -29,15 +31,23 @@
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
   .note { font-size: .85rem; color: #888; margin: 2px 0 6px; }
   .err { color: var(--c); font-weight: 600; font-size: .9rem; margin-top: 6px; }
-  .two { display: flex; flex-wrap: wrap; gap: 12px 36px; align-items: flex-start; }
-  .params { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .9rem; margin-top: 6px; max-width: 360px; }
+  .model { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: flex-start; }
+  .model > div:last-child { max-width: 900px; }
+  .model .controls { margin: 10px 0 0; }
+  .model #qnote + .controls { margin-top: 16px; padding-top: 14px; border-top: 1px solid #ddd; }
+  .model .params { margin-top: 4px; }
+  .params { display: grid; grid-template-columns: auto auto; justify-content: start; gap: 8px 28px; font-size: .9rem; }
+  .params label { justify-content: flex-start; gap: 4px; }
+  .params .mono { font-size: .95rem; }
+  .params .row { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
   .params input[type=number] { width: 4.8em; }
+  .params .note { margin: 0; }
+  .model #qnote { margin-top: 12px; }
   #status { font-size: .9rem; color: #555; margin-top: 12px; }
   #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
   .cF { color: var(--f); font-weight: 700; } .cC { color: var(--c); font-weight: 700; }
   .cur { color: var(--curtx); }
   [hidden] { display: none !important; }
-  .two > div:first-child { max-width: 400px; }
   svg { display: block; user-select: none; -webkit-user-select: none; }
 
   /* model diagram */
@@ -93,54 +103,49 @@
 <body>
 <h1>Hidden Markov model: which coin did Jack throw?</h1>
 
-<div class="controls">
-  <label>Mode <select id="selMode">
-    <option value="fb" selected>parameters known: forward–backward and posterior decoding</option>
-    <option value="em">e(0|C) unknown: estimate it by EM</option>
-  </select></label>
-  <label>Throws L <input type="number" id="len" value="100" min="1" max="2000" step="50"></label>
-  <label>Seed <input type="number" id="seed" value="1" min="0" max="999999"></label>
-  <button id="btnSim" title="Simulate new hidden coins and throws (s)">Re-simulate</button>
-  <button id="btnSlide" title="Load the 100 throws shown in the slides">Slide example</button>
-</div>
-<div class="controls">
-  <button id="btnBack" title="Previous step (←)">◀ Back</button>
-  <button id="btnStep" title="Next step (→)">Step ▶</button>
-  <button id="btnRun" title="Run to the end (f)">Run all</button>
-  <button id="btnReset" title="Back to the start (r)">Reset</button>
-  <label id="lblTheta" hidden>EM start θ<sup>(0)</sup> <input type="number" id="theta0" value="0.5" min="0.01" max="0.99" step="0.05"></label>
-</div>
-
 <p class="hint">
   Jack has two coins that look identical. The fair coin F shows head (0) or tail (1) at 50%; the cheat coin C shows
   head at 90% and tail at 10%. If he has just used the fair coin he picks it again with probability 0.9; if he has
   just used the cheat coin he keeps it with probability 0.8. After choosing a coin he throws it and only tells us
   the outcome. He repeats this many times, and we want to guess which coin he used at each throw. When e(0|C) is
   unknown, we also want to estimate it from the throws.
-  Changing a parameter re-simulates with the same seed; edit the observation to decode your own throws.
+  Changing a parameter re-simulates with the same seed.
   Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> re-simulate,
-  <kbd>m</kbd> switch mode.
+  <kbd>m</kbd> toggle parameter estimation.
 </p>
 
-<div class="two">
+<h2>1 Model</h2>
+<div class="model">
+  <div id="model"></div>
   <div>
-    <h2>1 Model</h2>
-    <div id="model"></div>
     <div class="params">
-      <label>p(F|F) <input type="number" id="pFF" value="0.9" min="0.001" max="0.999" step="0.05"></label>
-      <label>p(C|C) <input type="number" id="pCC" value="0.8" min="0.001" max="0.999" step="0.05"></label>
-      <label>e(0|F) <input type="number" id="eF" value="0.5" min="0.001" max="0.999" step="0.05"></label>
-      <label>e(0|C) <input type="number" id="eC" value="0.9" min="0.001" max="0.999" step="0.05"> <span id="eCnote" class="note" hidden>(simulation only)</span></label>
+      <label><span class="mono">p(F|F)=</span> <input type="number" id="pFF" autocomplete="off" value="0.9" min="0.001" max="0.999" step="0.05"></label>
+      <label><span class="mono">e(0|F)=</span> <span class="mono">0.5</span> <span class="note">(fair coin, fixed)</span></label>
+      <label><span class="mono">p(C|C)=</span> <input type="number" id="pCC" autocomplete="off" value="0.8" min="0.001" max="0.999" step="0.05"></label>
+      <span class="row"><label><span class="mono">e(0|C)=</span> <input type="number" id="eC" autocomplete="off" value="0.9" min="0.001" max="0.999" step="0.05"></label>
+        <label><input type="checkbox" id="chkEM"> estimate this parameter</label></span>
     </div>
     <div id="qnote" class="note"></div>
-  </div>
-  <div>
-    <h2>2 Observation x = a<sub>1</sub>…a<sub>L</sub> (0 = head, 1 = tail; editable)</h2>
-    <textarea id="obs" spellcheck="false"></textarea>
-    <div id="derr" class="err"></div>
-    <div id="truthnote" class="note"></div>
+    <div class="controls">
+      <label>Throws L <input type="number" id="len" value="100" min="1" max="2000" step="50"></label>
+      <label>Seed <input type="number" id="seed" value="1" min="0" max="999999"></label>
+      <button id="btnSim" title="Simulate new hidden coins and throws (s)">Re-simulate</button>
+      <button id="btnSlide" title="Load the 100 throws shown in the slides">Example</button>
+    </div>
+    <div class="controls">
+      <button id="btnBack" title="Previous step (←)">◀ Back</button>
+      <button id="btnStep" title="Next step (→)">Step ▶</button>
+      <button id="btnRun" title="Run to the end (f)">Run all</button>
+      <button id="btnReset" title="Back to the start (r)">Reset</button>
+      <label id="lblTheta" hidden>EM start θ =<input type="number" id="theta0" value="0.5" min="0.01" max="0.99" step="0.05"></label>
+    </div>
   </div>
 </div>
+
+<h2>2 Observation x = a<sub>1</sub>…a<sub>L</sub> (0 = head, 1 = tail)</h2>
+<textarea id="obs" readonly spellcheck="false"></textarea>
+<div id="derr" class="err"></div>
+<div id="truthnote" class="note"></div>
 
 <h2>3 Throws, hidden coins and the posterior Pr{Z<sub>i</sub> = C | x}</h2>
 <div class="legend">
@@ -176,6 +181,7 @@
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const MAXL = 2000, MAXIT = 300, TOL = 1e-6;
   const SN = ['F', 'C'];
+  const DEFAULTS = { pFF: 0.9, pCC: 0.8, eC: 0.9, len: 100, seed: 1, theta0: 0.5 };   // the slides' model
   const SLIDE_X = '0101011001010000001110111011010101100101000001111101101100110101000010000110001000000100001101000000';
   const SLIDE_Y = 'FFFFFFFFFCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFCCCCCCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFCCCCCCCCCCFFCFCCCCFF';
   const f2 = x => x.toFixed(2), f3 = x => x.toFixed(3), f4 = x => x.toFixed(4);
@@ -257,7 +263,7 @@
   // ---------- state ----------
   const clampP = v => Math.min(0.999, Math.max(0.001, isFinite(v) ? v : 0.5));
   function readModel() {
-    const pFF = clampP(+$('pFF').value), pCC = clampP(+$('pCC').value), eF = clampP(+$('eF').value), eC = clampP(+$('eC').value);
+    const pFF = clampP(+$('pFF').value), pCC = clampP(+$('pCC').value), eF = 0.5, eC = clampP(+$('eC').value);
     const p = [[pFF, 1 - pFF], [1 - pCC, pCC]], e = [[eF, 1 - eF], [eC, 1 - eC]];
     M = { p, e, q: stationary(p), theta0: clampP(+$('theta0').value) };
   }
@@ -272,7 +278,7 @@
     rebuild();
   }
   function loadSlide() {
-    $('pFF').value = 0.9; $('pCC').value = 0.8; $('eF').value = 0.5; $('eC').value = 0.9; $('len').value = 100;
+    for (const id of ['pFF', 'pCC', 'eC', 'len']) $(id).value = DEFAULTS[id];
     Sim = { x: [...SLIDE_X].map(Number), y: [...SLIDE_Y].map(c => c === 'C' ? 1 : 0) };
     simText = SLIDE_X;
     $('obs').value = simText;
@@ -287,7 +293,7 @@
   }
   function rebuild() {
     readModel();
-    mode = $('selMode').value;
+    mode = $('chkEM').checked ? 'em' : 'fb';
     D = parseObs($('obs').value);
     FB = EM = null;
     if (!D.error) {
@@ -339,9 +345,8 @@
     else o += emit(xC, '0: θ', '1: 1 − θ', `<text class="elab th" x="${xC}" y="${cy + 122}">θ<tspan baseline-shift="super" font-size="9">(${k})</tspan> = ${f4(th)}</text>`);
     o += '</svg>';
     $('model').innerHTML = o;
-    $('qnote').innerHTML = `Stationary distribution: q(F) = ${f3(q[0])}, q(C) = ${f3(q[1])} (solves q<sup>T</sup>P = q); the chain starts from q.` +
-      (th !== null ? ' In EM mode e(0|C) is treated as unknown; the value in the box is only used to simulate.' : '');
-    $('eCnote').hidden = th === null;
+    $('qnote').innerHTML = `Stationary distribution: q(F) = ${f3(q[0])}, q(C) = ${f3(q[1])}.` +
+      (th !== null ? ' θ=e(0|C) is being estimated; value in the box for simulation only' : '');
   }
 
   const cell = (x, y, w, h, cls, txt) => `<rect class="c ${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>` +
@@ -351,20 +356,20 @@
     const x = D.x, L = x.length, truth = truthArr(), av = avail();
     const wide = L <= 400, CW = wide ? 20 : 11, PR = wide ? 50 : 100, LW = 66;
     const HP = 12, HC = wide ? 20 : 12, HB = 30, G = 3, RG = 16;
-    const yObs = HP + 2, yTru = yObs + HC + G, yBar = truth ? yTru + HC + G : yTru, yDec = yBar + HB + G, rowH = yDec + HC + RG;
+    const yTop = HP + 2, yTru = yTop, yObs = truth ? yTru + HC + G : yTop, yBar = yObs + HC + G, yDec = yBar + HB + G, rowH = yDec + HC + RG;
     const rows = Math.ceil(L / PR), W = LW + PR * CW + 4, H = rows * rowH;
     let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
     for (let r = 0; r < rows; r++) {
       const y0 = r * rowH, n = Math.min(L, (r + 1) * PR) - r * PR;
-      o += `<text class="rl" x="${LW - 6}" y="${y0 + yObs + HC / 2}">throw</text>`;
       if (truth) o += `<text class="rl" x="${LW - 6}" y="${y0 + yTru + HC / 2}">truth</text>`;
+      o += `<text class="rl" x="${LW - 6}" y="${y0 + yObs + HC / 2}">throw</text>`;
       o += `<text class="rl" x="${LW - 6}" y="${y0 + yBar + HB / 2}">Pr{C|x}</text><text class="rl" x="${LW - 6}" y="${y0 + yDec + HC / 2}">decoded</text>`;
       for (let i = r * PR; i < r * PR + n; i++) {
         const cx = LW + (i - r * PR) * CW;
         o += `<g class="pos" data-i="${i}">`;
         if (i === 0 || (i + 1) % (wide ? 10 : 20) === 0) o += `<text class="idx" x="${cx + CW / 2}" y="${y0 + HP - 3}">${i + 1}</text>`;
-        o += cell(cx, y0 + yObs, CW, HC, x[i] ? 'o1' : 'o0', wide ? x[i] : '');
         if (truth) o += cell(cx, y0 + yTru, CW, HC, truth[i] ? 'sC' : 'sF', wide ? SN[truth[i]] : '');
+        o += cell(cx, y0 + yObs, CW, HC, x[i] ? 'o1' : 'o0', wide ? x[i] : '');
         o += `<rect class="bbg" x="${cx}" y="${y0 + yBar}" width="${CW}" height="${HB}"/>`;
         const pc = av.postC(i);
         if (pc) {
@@ -377,7 +382,7 @@
       o += `<line class="mid" x1="${LW}" y1="${y0 + yBar + HB / 2}" x2="${LW + n * CW}" y2="${y0 + yBar + HB / 2}"/>`;
       if (av.cur >= r * PR && av.cur < r * PR + n) {
         const cx = LW + (av.cur - r * PR) * CW;
-        o += `<rect class="curbox" x="${cx - 1}" y="${y0 + yObs - 1}" width="${CW + 2}" height="${yDec + HC - yObs + 2}"/>`;
+        o += `<rect class="curbox" x="${cx - 1}" y="${y0 + yTop - 1}" width="${CW + 2}" height="${yDec + HC - yTop + 2}"/>`;
       }
     }
     o += '</svg>';
@@ -562,9 +567,9 @@
   $('btnReset').addEventListener('click', () => setK(0));
   $('btnSim').addEventListener('click', () => resim(true));
   $('btnSlide').addEventListener('click', loadSlide);
-  for (const id of ['len', 'seed', 'pFF', 'pCC', 'eF', 'eC']) $(id).addEventListener('change', () => resim(false));
+  for (const id of ['len', 'seed', 'pFF', 'pCC', 'eC']) $(id).addEventListener('change', () => resim(false));
   $('theta0').addEventListener('change', rebuild);
-  $('selMode').addEventListener('change', rebuild);
+  $('chkEM').addEventListener('change', rebuild);
   $('obs').addEventListener('input', rebuild);
   $('strip').addEventListener('mouseover', e => {
     const g = e.target.closest('g.pos'); if (!g || D.error) return;
@@ -591,10 +596,13 @@
       case 'f': case 'F': setK(K()); break;
       case 'r': case 'R': setK(0); break;
       case 's': case 'S': resim(true); break;
-      case 'm': case 'M': $('selMode').value = mode === 'fb' ? 'em' : 'fb'; rebuild(); break;
+      case 'm': case 'M': $('chkEM').checked = !$('chkEM').checked; rebuild(); break;
     }
   });
 
+  // Browsers may restore edited form values on reload; start from the slides' model regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  $('chkEM').checked = false;
   resim(false);
 })();
 </script>

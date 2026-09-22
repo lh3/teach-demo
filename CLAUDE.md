@@ -29,10 +29,15 @@ working when opened as a local `file://` URL.
   a convergence chart.
 - `hmm.html`: two-state HMM (fair/cheat coin, slide 2 of the HMM lecture; same maths as
   `hmm-coin-em.py`): simulate the hidden coins and throws, or load the slides' 100-throw example.
-  Mode 1 steps the scaled forward pass (α̃, scale s_i) left to right and the backward pass right
-  to left, drawing α̃(i,C) as a light bar until the posterior α̃β̃ replaces it. Mode 2 treats
-  e(0|C) as unknown and steps EM iterations (posterior sums n₀, n₁ → new θ) with convergence
-  charts. Only the rescaled recurrences are implemented (no unscaled α anywhere).
+  The model panel has the state diagram on the left and, on the right, the parameters
+  (p(F|F), p(C|C), e(0|C); e(0|F) is fixed at 0.5), the stationary distribution, then the
+  simulation and step controls; defaults are written into the inputs at load so browser form
+  restoration cannot change the model. The observation is a read-only textarea. With
+  "estimate this parameter" unticked, steps walk the scaled forward pass (α̃, scale s_i) left
+  to right and the backward pass right to left, drawing α̃(i,C) as a light bar until the
+  posterior α̃β̃ replaces it. Ticked, e(0|C) = θ is unknown and each step is one EM iteration
+  (posterior sums n₀, n₁ → new θ) with convergence charts. Only the rescaled recurrences are
+  implemented (no unscaled α anywhere).
 
 ## Developing and checking
 
