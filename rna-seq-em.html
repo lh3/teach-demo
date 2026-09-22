@@ -99,7 +99,7 @@
   <button id="btnBack" title="Previous iteration (←)">◀ Back</button>
   <button id="btnStep" title="One EM iteration (→)">Step ▶</button>
   <button id="btnRun" title="Run until convergence (f)">Run all</button>
-  <button id="btnReset" title="Back to the uniform start (r)">Reset</button>
+  <button id="btnReset" title="Back to the starting estimate (r)">Reset</button>
 </div>
 
 <p class="hint">
@@ -108,7 +108,8 @@
   transcript in proportion to p<sub>t</sub>·l<sub>t</sub> and a position along it (uniform, or exponential from one end
   with mean 300 bp). All reads with the same hit pattern δ (hits per transcript) collapse into one line
   <span class="mono">count: δ<sub>1</sub>,…,δ<sub>n</sub></span>.
-  <b>EM:</b> start with equal nucleotide fractions q<sub>t</sub> = 1/n, then repeat
+  <b>EM:</b> start by giving each transcript 1/k of every read that hits k transcripts, so
+  q<sub>t</sub><sup>(0)</sup> = (Σ<sub>i</sub> δ<sub>it</sub>/Σ<sub>s</sub>δ<sub>is</sub>) / R (exact already when no read is multi-mapped), then repeat
   q<sub>t</sub><sup>(k+1)</sup> = (1/R) Σ<sub>i</sub> δ<sub>it</sub>q<sub>t</sub><sup>(k)</sup>/l<sub>t</sub> ⁄ Σ<sub>s</sub>δ<sub>is</sub>q<sub>s</sub><sup>(k)</sup>/l<sub>s</sub>
   (E-step: split each read among the transcripts it hits by per-base abundance; M-step: average). The transcript
   fraction is p<sub>t</sub> ∝ q<sub>t</sub>/l<sub>t</sub> and TPM = 10<sup>6</sup>·p<sub>t</sub>.
@@ -265,8 +266,16 @@
       const qn = R > 0 ? r.map(x => x / R) : q.slice();
       return { resp, r, qn };
     };
+    // Start: split every read equally among its hits (1/k for k distinct transcripts, weighted by
+    // multiplicity when a transcript is hit more than once), then q_t = count_t / R. If no read is
+    // multi-mapped this is already the maximum-likelihood estimate.
+    const c0 = Array(n).fill(0);
+    for (const pt of patterns) {
+      const s = pt.delta.reduce((a, b) => a + b, 0);
+      if (s > 0) pt.delta.forEach((d, t) => { c0[t] += pt.count * d / s; });
+    }
     const steps = [];
-    let q = Array(n).fill(1 / n), converged = false;
+    let q = R > 0 ? c0.map(x => x / R) : Array(n).fill(1 / n), converged = false;
     for (let it = 0; ; it++) {
       const e = estep(q);
       const prev = steps.length ? steps[steps.length - 1].q : null;
@@ -406,7 +415,7 @@
     const st = EM.steps[k], KK = K(), n = EM.n;
     let o;
     if (k === 0) {
-      o = `<b>Start:</b> every transcript gets the same nucleotide fraction q<sub>t</sub> = 1/${n}. Under this q, a read with hit pattern δ goes to transcript t with probability δ<sub>t</sub>q<sub>t</sub>/l<sub>t</sub> divided by the same sum over all transcripts it hits: with equal q, shorter transcripts have more copies per base and take the larger share of a shared read. Table 4 shows this split; press → to turn it into q<sup>(1)</sup>.`;
+      o = `<b>Start:</b> each read is split evenly among the transcripts it hits (a unique read counts 1 for its transcript, a read hitting k transcripts counts 1/k for each) and q<sub>t</sub><sup>(0)</sup> is the resulting count divided by R = ${EM.R}. If no read were multi-mapped this would already be the answer. Under this q, a read with hit pattern δ goes to transcript t with probability δ<sub>t</sub>q<sub>t</sub>/l<sub>t</sub> divided by the same sum over all transcripts it hits, so abundance and length now both matter. Table 4 shows this split; press → to turn it into q<sup>(1)</sup>.`;
     } else {
       o = `<b>Iteration ${k}:</b> E-step — the reads of each pattern were split by the posterior Pr{Z<sub>i</sub> = t} computed from q<sup>(${k - 1})</sup>; M-step — expected reads were summed per transcript (r<sub>t</sub>) and divided by R = ${EM.R} to give q<sup>(${k})</sup>; then p<sub>t</sub> ∝ q<sub>t</sub>/l<sub>t</sub> (Eq. 2). Largest change in q: ${st.delta.toExponential(2)}.`;
       if (k === KK) {

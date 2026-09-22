@@ -26,7 +26,9 @@ working when opened as a local `file://` URL.
   exponential 5'/3' bias, optional within-transcript repeats: one transcript gets a duplicated block that a second
   transcript also carries), collapse reads into hit patterns in an
   editable textarea (lengths are fixed by the simulation), then step through EM iterations with the E-step table, estimates vs truth and
-  a convergence chart.
+  a convergence chart. EM starts from the count-based estimate (each read split evenly among the
+  transcripts it hits, weighted by hit multiplicity), not from a flat 1/n, so unique-only data is
+  already at the MLE at iteration 0.
 - `hmm.html`: two-state HMM (fair/cheat coin, slide 2 of the HMM lecture; same maths as
   `hmm-coin-em.py`): simulate the hidden coins and throws, or load the slides' 100-throw example.
   The model panel has the state diagram on the left and, on the right, the parameters
