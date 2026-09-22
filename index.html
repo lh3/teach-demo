@@ -28,7 +28,7 @@
 <body>
 <h1>Interactive demos of sequence algorithms</h1>
 <p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise alignment, read mapping,
-genome assembly and RNA-seq quantification. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
+genome assembly, RNA-seq quantification and hidden Markov models. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
 buttons or the arrow keys and watch every intermediate state.</p>
 
 <ol>
@@ -61,6 +61,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <span class="num">6</span><span class="name">RNA-seq quantification with EM</span>
     <div class="desc">Simulate transcripts built from shared blocks and reads that map to several of them, then step through the EM iterations: split each multi-mapped read by per-base abundance, average, and watch the estimated transcript fractions converge to the simulated truth. Edit the read counts to run EM on your own data.</div>
     <div class="tags">latent variables · nucleotide vs transcript fraction · convergence</div>
+  </a></li>
+  <li><a href="hmm.html">
+    <span class="num">7</span><span class="name">Hidden Markov model: fair and cheat coins</span>
+    <div class="desc">Simulate which coin Jack throws and what he reports, then step the forward pass left to right and the backward pass right to left, rescaling at every position so nothing underflows, and watch the posterior of the cheat coin fill in against the hidden truth. Switch to EM mode to estimate an unknown emission probability from the posteriors, one iteration at a time.</div>
+    <div class="tags">forward–backward · rescaling · posterior decoding · EM</div>
   </a></li>
 </ol>
 

@@ -2,7 +2,7 @@
 > This project is vibe coded with Claude Code.
 
 Interactive, single-page demos of core sequence-analysis algorithms, from alignment
-and read mapping to assembly and RNA-seq quantification, written for teaching. Each
+and read mapping to assembly, RNA-seq quantification and hidden Markov models, written for teaching. Each
 page takes toy inputs you can edit and lets you step through the algorithm one
 action at a time.
 
@@ -14,6 +14,7 @@ action at a time.
 | `bwa-aln.html` | bwa-aln backtracking on a prefix trie, with the D-array bound |
 | `ovasm.html` | Genome assembly with an overlap graph: overlap, reduce, compact |
 | `rna-seq-em.html` | RNA-seq quantification: resolving multi-mapped reads with EM |
+| `hmm.html` | Hidden Markov model: forward–backward with rescaling, posterior decoding, EM |
 
 `index.html` only links to the pages above.
 

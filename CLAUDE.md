@@ -27,6 +27,12 @@ working when opened as a local `file://` URL.
   transcript also carries), collapse reads into hit patterns in an
   editable textarea (lengths are fixed by the simulation), then step through EM iterations with the E-step table, estimates vs truth and
   a convergence chart.
+- `hmm.html`: two-state HMM (fair/cheat coin, slide 2 of the HMM lecture; same maths as
+  `hmm-coin-em.py`): simulate the hidden coins and throws, or load the slides' 100-throw example.
+  Mode 1 steps the scaled forward pass (α̃, scale s_i) left to right and the backward pass right
+  to left, drawing α̃(i,C) as a light bar until the posterior α̃β̃ replaces it. Mode 2 treats
+  e(0|C) as unknown and steps EM iterations (posterior sums n₀, n₁ → new θ) with convergence
+  charts. Only the rescaled recurrences are implemented (no unscaled α anywhere).
 
 ## Developing and checking
 
@@ -48,8 +54,8 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
 ```
 
 Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
-`runSearch`, `buildModel`, the ovasm helpers, and `simulate`, `parseCounts`, `emSteps` in
-`rna-seq-em.html`) free of DOM access
+`runSearch`, `buildModel`, the ovasm helpers, `simulate`, `parseCounts`, `emSteps` in
+`rna-seq-em.html`, and `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
@@ -86,5 +92,5 @@ All demos follow the same pattern; keep new pages consistent with it.
 
 GitHub Pages serves the repo root, so new demos go at the root, are linked from
 `index.html` with relative paths, and must not rely on a server. Slide PDFs the instructor
-drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`) and the reference script `rna-seq-em.py` are
-reference material and are not committed.
+drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`) and the reference scripts
+`rna-seq-em.py` and `hmm-coin-em.py` are reference material and are not committed.

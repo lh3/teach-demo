@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hidden Markov Model: Fair and Cheat Coins</title>
+<style>
+  :root {
+    --f: #1e6fd9; --fbg: #d6e6fb;
+    --c: #d62828; --cbg: #fbd6d6;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --em: #e8641b;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label, .params label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { font: inherit; width: 5.5em; padding: 3px 4px; }
+  textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; width: 52ch; max-width: 100%; height: 7em; resize: vertical; display: block; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 2px 0 6px; }
+  .err { color: var(--c); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .two { display: flex; flex-wrap: wrap; gap: 12px 36px; align-items: flex-start; }
+  .params { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .9rem; margin-top: 6px; max-width: 360px; }
+  .params input[type=number] { width: 4.8em; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  .cF { color: var(--f); font-weight: 700; } .cC { color: var(--c); font-weight: 700; }
+  .cur { color: var(--curtx); }
+  [hidden] { display: none !important; }
+  .two > div:first-child { max-width: 400px; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+
+  /* model diagram */
+  .st { fill: #fff; stroke: var(--f); stroke-width: 1.5; }
+  .stl { font: 15px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #222; }
+  .tr { fill: none; stroke: var(--f); stroke-width: 1.5; }
+  .lab { font: 12px system-ui, sans-serif; text-anchor: middle; fill: #222; }
+  .em { stroke: var(--em); stroke-width: 1.5; }
+  .ebox { fill: #fff; stroke: var(--em); stroke-width: 1.5; }
+  .elab { font: 12px system-ui, sans-serif; text-anchor: middle; fill: #222; }
+  .elab.th { fill: var(--curtx); font-weight: 700; }
+
+  /* strip of throws */
+  #strip { overflow: auto; max-height: 540px; position: relative; }
+  .c { stroke: #fff; stroke-width: 1; }
+  .c.o0 { fill: #f2f2f2; } .c.o1 { fill: #8a8a8a; }
+  .c.sF { fill: var(--fbg); } .c.sC { fill: var(--cbg); }
+  .c.miss { stroke: #222; stroke-width: 2; }
+  .ct { font: 700 12px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #222; pointer-events: none; }
+  .c.o1 + .ct { fill: #fff; } .c.sF + .ct { fill: var(--f); } .c.sC + .ct { fill: var(--c); }
+  .bbg { fill: #f7f7f7; }
+  .bar { fill: var(--c); } .bar.fwd { opacity: .35; }
+  .mid { stroke: #999; stroke-dasharray: 2 3; pointer-events: none; }
+  .hit { fill: transparent; cursor: default; }
+  .pos:hover .hit { fill: rgba(230, 168, 0, .18); }
+  .idx { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; }
+  .rl { font: 11px system-ui, sans-serif; fill: #555; text-anchor: end; dominant-baseline: central; }
+  .curbox { fill: none; stroke: var(--cur); stroke-width: 2.5; pointer-events: none; }
+
+  /* tables */
+  .tbox { max-height: 360px; overflow: auto; position: relative; }
+  table { border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 3px 9px; border-bottom: 1px solid #e3e3e3; text-align: right; white-space: nowrap; vertical-align: middle; }
+  th { color: #555; font-weight: 600; border-bottom: 1.5px solid #bbb; position: sticky; top: 0; background: #fff; }
+  tr.cur td { background: var(--curbg); }
+  tr[data-i]:hover td, tr[data-k]:hover td { background: #f3f7fd; }
+  tr[data-k] { cursor: pointer; }
+
+  /* charts */
+  .charts { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .ax line { stroke: #bbb; } .ax text { font: 10px system-ui, sans-serif; fill: #777; }
+  .ln { fill: none; stroke: var(--f); stroke-width: 2; }
+  .tru { fill: none; stroke: var(--c); stroke-width: 1.2; stroke-dasharray: 4 3; opacity: .85; }
+  .kmark { stroke: var(--cur); stroke-width: 2; }
+  .dotk { fill: var(--f); stroke: #fff; stroke-width: 1.5; }
+  .ctitle { font: 700 12px system-ui, sans-serif; fill: #444; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+  .legend .ln2 { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid; }
+  .legend .ln2.dash { border-top-style: dashed; border-color: var(--c); }
+</style>
+</head>
+<body>
+<h1>Hidden Markov model: which coin did Jack throw?</h1>
+
+<div class="controls">
+  <label>Mode <select id="selMode">
+    <option value="fb" selected>parameters known: forward–backward and posterior decoding</option>
+    <option value="em">e(0|C) unknown: estimate it by EM</option>
+  </select></label>
+  <label>Throws L <input type="number" id="len" value="100" min="1" max="2000" step="50"></label>
+  <label>Seed <input type="number" id="seed" value="1" min="0" max="999999"></label>
+  <button id="btnSim" title="Simulate new hidden coins and throws (s)">Re-simulate</button>
+  <button id="btnSlide" title="Load the 100 throws shown in the slides">Slide example</button>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+  <label id="lblTheta" hidden>EM start θ<sup>(0)</sup> <input type="number" id="theta0" value="0.5" min="0.01" max="0.99" step="0.05"></label>
+</div>
+
+<p class="hint">
+  Jack has two coins that look identical. The fair coin F shows head (0) or tail (1) at 50%; the cheat coin C shows
+  head at 90% and tail at 10%. If he has just used the fair coin he picks it again with probability 0.9; if he has
+  just used the cheat coin he keeps it with probability 0.8. After choosing a coin he throws it and only tells us
+  the outcome. He repeats this many times, and we want to guess which coin he used at each throw. When e(0|C) is
+  unknown, we also want to estimate it from the throws.
+  Changing a parameter re-simulates with the same seed; edit the observation to decode your own throws.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> re-simulate,
+  <kbd>m</kbd> switch mode.
+</p>
+
+<div class="two">
+  <div>
+    <h2>1 Model</h2>
+    <div id="model"></div>
+    <div class="params">
+      <label>p(F|F) <input type="number" id="pFF" value="0.9" min="0.001" max="0.999" step="0.05"></label>
+      <label>p(C|C) <input type="number" id="pCC" value="0.8" min="0.001" max="0.999" step="0.05"></label>
+      <label>e(0|F) <input type="number" id="eF" value="0.5" min="0.001" max="0.999" step="0.05"></label>
+      <label>e(0|C) <input type="number" id="eC" value="0.9" min="0.001" max="0.999" step="0.05"> <span id="eCnote" class="note" hidden>(simulation only)</span></label>
+    </div>
+    <div id="qnote" class="note"></div>
+  </div>
+  <div>
+    <h2>2 Observation x = a<sub>1</sub>…a<sub>L</sub> (0 = head, 1 = tail; editable)</h2>
+    <textarea id="obs" spellcheck="false"></textarea>
+    <div id="derr" class="err"></div>
+    <div id="truthnote" class="note"></div>
+  </div>
+</div>
+
+<h2>3 Throws, hidden coins and the posterior Pr{Z<sub>i</sub> = C | x}</h2>
+<div class="legend">
+  <span><span class="box" style="background:#f2f2f2"></span>0 = head</span>
+  <span><span class="box" style="background:#8a8a8a"></span>1 = tail</span>
+  <span><span class="box" style="background:var(--fbg)"></span>F fair coin</span>
+  <span><span class="box" style="background:var(--cbg)"></span>C cheat coin</span>
+  <span><span class="box" style="background:var(--c)"></span>posterior Pr{Z<sub>i</sub> = C | x} (bar height; dashed line = 0.5)</span>
+  <span><span class="box" style="background:var(--c);opacity:.35"></span>α̃(i,C) = Pr{Z<sub>i</sub> = C | a<sub>1..i</sub>}, forward pass only</span>
+  <span><span class="box" style="border:2px solid #222"></span>decoded ≠ truth</span>
+</div>
+<div id="strip"></div>
+
+<h2 id="h4">4 Scaled forward and backward values by position</h2>
+<div id="table" class="tbox"></div>
+
+<div id="emwrap" hidden>
+  <h2>5 Convergence of θ = e(0|C) and of the log-likelihood</h2>
+  <div class="charts"><div id="chart1"></div><div id="chart2"></div></div>
+  <div class="legend">
+    <span><span class="ln2" style="border-color:var(--f)"></span>EM estimate by iteration</span>
+    <span><span class="ln2 dash"></span>value used to simulate</span>
+    <span><span class="ln2" style="border-color:var(--cur)"></span>current iteration (click a chart to jump)</span>
+  </div>
+</div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const MAXL = 2000, MAXIT = 300, TOL = 1e-6;
+  const SN = ['F', 'C'];
+  const SLIDE_X = '0101011001010000001110111011010101100101000001111101101100110101000010000110001000000100001101000000';
+  const SLIDE_Y = 'FFFFFFFFFCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFCCCCCCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFCCCCCCCCCCFFCFCCCCFF';
+  const f2 = x => x.toFixed(2), f3 = x => x.toFixed(3), f4 = x => x.toFixed(4);
+  const fp = x => String(+x.toFixed(3));   // parameters: drop trailing zeros
+  const pow10 = lp => { const e = lp / Math.LN10, ex = Math.floor(e); return `${Math.pow(10, e - ex).toFixed(2)}×10<sup>${ex}</sup>`; };
+  const st = t => `<span class="${t ? 'cC' : 'cF'}">${SN[t]}</span>`;
+
+  let Sim = null, simText = '';   // last simulation {x, y}; y is the hidden truth
+  let M = null;                   // model {p, e, q, theta0}
+  let D = null;                   // parsed observation {x} or {error}
+  let FB = null, EM = null, mode = 'fb', k = 0;
+
+  // ---------- pure model ----------
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  // Stationary distribution of the two-state chain: solves q^T P = q.
+  function stationary(p) { const a = p[0][1], b = p[1][0]; return [b / (a + b), a / (a + b)]; }
+
+  // Simulate L throws: Z_1 ~ q, then emit a_i ~ e(.|Z_i) and move Z_{i+1} ~ p(.|Z_i). States 0 = F, 1 = C.
+  function hmmGen(L, q, p, e, rand) {
+    const x = [], y = [];
+    let t = rand() < q[0] ? 0 : 1;
+    for (let i = 0; i < L; i++) {
+      y.push(t); x.push(rand() < e[t][0] ? 0 : 1);
+      t = rand() < p[t][0] ? 0 : 1;
+    }
+    return { x, y };
+  }
+
+  // Forward-backward with rescaling (slides 26-27). fu[i] = unnormalised column e(a_i|t) sum_s f[i-1][s] p(t|s),
+  // s[i] = its sum, f[i] = fu[i]/s[i] (sums to 1), b[i] = scaled backward, post[i][t] = f*b = Pr{Z_i=t|x},
+  // logP[i] = sum_{j<=i} log s_j.
+  function forwardBackward(x, q, p, e) {
+    const L = x.length, f = [], fu = [], s = [], b = [], logP = [];
+    let lp = 0;
+    for (let i = 0; i < L; i++) {
+      const a = x[i], g = f[i - 1];
+      const u = i === 0 ? [e[0][a] * q[0], e[1][a] * q[1]]
+        : [e[0][a] * (g[0] * p[0][0] + g[1] * p[1][0]), e[1][a] * (g[0] * p[0][1] + g[1] * p[1][1])];
+      const si = u[0] + u[1];
+      fu.push(u); s.push(si); f.push([u[0] / si, u[1] / si]);
+      lp += Math.log(si); logP.push(lp);
+    }
+    b[L - 1] = [1, 1];
+    for (let i = L - 2; i >= 0; i--) {
+      const a = x[i + 1], n = b[i + 1], sn = s[i + 1];
+      b[i] = [(n[0] * e[0][a] * p[0][0] + n[1] * e[1][a] * p[0][1]) / sn,
+              (n[0] * e[0][a] * p[1][0] + n[1] * e[1][a] * p[1][1]) / sn];
+    }
+    const post = f.map((fi, i) => [fi[0] * b[i][0], fi[1] * b[i][1]]);
+    return { f, fu, s, b, post, logP, L };
+  }
+
+  // EM for theta = e(0|C) (slides 21-22): E-step = posteriors under the current theta; M-step:
+  // theta <- (expected cheat-coin heads) / (expected cheat-coin throws). Only the posteriors are kept per step.
+  function emSteps(x, q, p, e0F, theta0, maxIter, tol) {
+    const steps = [];
+    let th = theta0, converged = false;
+    for (let it = 0; ; it++) {
+      const e = [[e0F, 1 - e0F], [th, 1 - th]];
+      const fb = forwardBackward(x, q, p, e);
+      let n0 = 0, n1 = 0;
+      for (let i = 0; i < x.length; i++) { if (x[i] === 0) n0 += fb.post[i][1]; else n1 += fb.post[i][1]; }
+      const thn = n0 + n1 > 0 ? n0 / (n0 + n1) : th;
+      steps.push({ theta: th, post: fb.post, n0, n1, thetaNext: thn, logP: fb.logP[x.length - 1] });
+      if (Math.abs(thn - th) < tol) { converged = true; break; }
+      if (it >= maxIter) break;
+      th = thn;
+    }
+    return { steps, converged };
+  }
+
+  // ---------- state ----------
+  const clampP = v => Math.min(0.999, Math.max(0.001, isFinite(v) ? v : 0.5));
+  function readModel() {
+    const pFF = clampP(+$('pFF').value), pCC = clampP(+$('pCC').value), eF = clampP(+$('eF').value), eC = clampP(+$('eC').value);
+    const p = [[pFF, 1 - pFF], [1 - pCC, pCC]], e = [[eF, 1 - eF], [eC, 1 - eC]];
+    M = { p, e, q: stationary(p), theta0: clampP(+$('theta0').value) };
+  }
+  function resim(newSeed) {
+    if (newSeed) $('seed').value = Math.floor(Math.random() * 1e6);
+    readModel();
+    const L = Math.max(1, Math.min(MAXL, Math.floor(+$('len').value) || 100));
+    $('len').value = L;
+    Sim = hmmGen(L, M.q, M.p, M.e, mulberry32(+$('seed').value || 0));
+    simText = Sim.x.join('');
+    $('obs').value = simText;
+    rebuild();
+  }
+  function loadSlide() {
+    $('pFF').value = 0.9; $('pCC').value = 0.8; $('eF').value = 0.5; $('eC').value = 0.9; $('len').value = 100;
+    Sim = { x: [...SLIDE_X].map(Number), y: [...SLIDE_Y].map(c => c === 'C' ? 1 : 0) };
+    simText = SLIDE_X;
+    $('obs').value = simText;
+    rebuild();
+  }
+  function parseObs(text) {
+    const s = text.replace(/\s+/g, '');
+    if (!s) return { error: 'Enter an observation: a string of 0 (head) and 1 (tail).' };
+    if (/[^01]/.test(s)) return { error: 'The observation may only contain 0 (head) and 1 (tail).' };
+    if (s.length > MAXL) return { error: `At most ${MAXL} throws.` };
+    return { x: [...s].map(Number) };
+  }
+  function rebuild() {
+    readModel();
+    mode = $('selMode').value;
+    D = parseObs($('obs').value);
+    FB = EM = null;
+    if (!D.error) {
+      if (mode === 'fb') FB = forwardBackward(D.x, M.q, M.p, M.e);
+      else EM = emSteps(D.x, M.q, M.p, M.e[0][0], M.theta0, MAXIT, TOL);
+    }
+    k = 0;
+    render();
+  }
+  const K = () => D.error ? 0 : mode === 'fb' ? 2 * D.x.length : EM.steps.length - 1;
+  const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
+  const truthArr = () => Sim && $('obs').value.replace(/\s+/g, '') === simText ? Sim.y : null;
+
+  // What is known at step k. Forward step k (1..L) computes alpha at position k; backward step L+j computes beta at L+1-j.
+  function avail() {
+    const L = D.x.length;
+    if (mode === 'em') { const post = EM.steps[k].post; return { hasA: () => true, hasB: () => true, cur: -1, postC: i => ({ v: post[i][1], full: true }) }; }
+    const kA = Math.min(k, L), bFrom = k > L ? 2 * L - k : L;
+    return {
+      hasA: i => i < kA, hasB: i => i >= bFrom, cur: k === 0 ? -1 : k <= L ? k - 1 : 2 * L - k,
+      postC: i => i >= bFrom ? { v: FB.post[i][1], full: true } : i < kA ? { v: FB.f[i][1], full: false } : null,
+    };
+  }
+  function accuracy() {   // decoded == truth over positions whose posterior is known
+    const truth = truthArr(); if (!truth) return null;
+    const av = avail(); let n = 0, ok = 0;
+    for (let i = 0; i < D.x.length; i++) { const pc = av.postC(i); if (pc && pc.full) { n++; if ((pc.v > 0.5 ? 1 : 0) === truth[i]) ok++; } }
+    return { n, ok };
+  }
+
+  // ---------- rendering ----------
+  function renderModel() {
+    const { p, e, q } = M;
+    const th = mode === 'em' && EM ? EM.steps[k].theta : null;
+    const W = 330, H = 236, cy = 96, xF = 85, xC = 245, R = 26;
+    const node = (cx, name) => `<circle class="st" cx="${cx}" cy="${cy}" r="${R}"/><text class="stl" x="${cx}" y="${cy}">${name}</text>`;
+    const loop = (cx, lab) => `<path class="tr" d="M ${cx - 19} ${cy - 18} C ${cx - 52} ${cy - 84}, ${cx + 52} ${cy - 84}, ${cx + 19} ${cy - 18}" marker-end="url(#mT)"/><text class="lab" x="${cx}" y="${cy - 72}">${lab}</text>`;
+    const emit = (cx, l1, l2, extra) => `<line class="em" x1="${cx}" y1="${cy + R + 2}" x2="${cx}" y2="${cy + 58}" marker-end="url(#mE)"/>` +
+      `<rect class="ebox" x="${cx - 36}" y="${cy + 62}" width="72" height="40"/><text class="elab" x="${cx}" y="${cy + 78}">${l1}</text><text class="elab" x="${cx}" y="${cy + 95}">${l2}</text>${extra || ''}`;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs>` +
+      `<marker id="mT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1e6fd9"/></marker>` +
+      `<marker id="mE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e8641b"/></marker></defs>`;
+    o += loop(xF, fp(p[0][0])) + loop(xC, fp(p[1][1]));
+    o += `<line class="tr" x1="${xF + R + 2}" y1="${cy - 7}" x2="${xC - R - 2}" y2="${cy - 7}" marker-end="url(#mT)"/><text class="lab" x="${(xF + xC) / 2}" y="${cy - 13}">${fp(p[0][1])}</text>`;
+    o += `<line class="tr" x1="${xC - R - 2}" y1="${cy + 7}" x2="${xF + R + 2}" y2="${cy + 7}" marker-end="url(#mT)"/><text class="lab" x="${(xF + xC) / 2}" y="${cy + 22}">${fp(p[1][0])}</text>`;
+    o += node(xF, 'F') + node(xC, 'C');
+    o += emit(xF, `0: ${fp(e[0][0])}`, `1: ${fp(e[0][1])}`);
+    if (th === null) o += emit(xC, `0: ${fp(e[1][0])}`, `1: ${fp(e[1][1])}`);
+    else o += emit(xC, '0: θ', '1: 1 − θ', `<text class="elab th" x="${xC}" y="${cy + 122}">θ<tspan baseline-shift="super" font-size="9">(${k})</tspan> = ${f4(th)}</text>`);
+    o += '</svg>';
+    $('model').innerHTML = o;
+    $('qnote').innerHTML = `Stationary distribution: q(F) = ${f3(q[0])}, q(C) = ${f3(q[1])} (solves q<sup>T</sup>P = q); the chain starts from q.` +
+      (th !== null ? ' In EM mode e(0|C) is treated as unknown; the value in the box is only used to simulate.' : '');
+    $('eCnote').hidden = th === null;
+  }
+
+  const cell = (x, y, w, h, cls, txt) => `<rect class="c ${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>` +
+    (txt !== '' ? `<text class="ct" x="${x + w / 2}" y="${y + h / 2}">${txt}</text>` : '');
+
+  function renderStrip() {
+    const x = D.x, L = x.length, truth = truthArr(), av = avail();
+    const wide = L <= 400, CW = wide ? 20 : 11, PR = wide ? 50 : 100, LW = 66;
+    const HP = 12, HC = wide ? 20 : 12, HB = 30, G = 3, RG = 16;
+    const yObs = HP + 2, yTru = yObs + HC + G, yBar = truth ? yTru + HC + G : yTru, yDec = yBar + HB + G, rowH = yDec + HC + RG;
+    const rows = Math.ceil(L / PR), W = LW + PR * CW + 4, H = rows * rowH;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rowH, n = Math.min(L, (r + 1) * PR) - r * PR;
+      o += `<text class="rl" x="${LW - 6}" y="${y0 + yObs + HC / 2}">throw</text>`;
+      if (truth) o += `<text class="rl" x="${LW - 6}" y="${y0 + yTru + HC / 2}">truth</text>`;
+      o += `<text class="rl" x="${LW - 6}" y="${y0 + yBar + HB / 2}">Pr{C|x}</text><text class="rl" x="${LW - 6}" y="${y0 + yDec + HC / 2}">decoded</text>`;
+      for (let i = r * PR; i < r * PR + n; i++) {
+        const cx = LW + (i - r * PR) * CW;
+        o += `<g class="pos" data-i="${i}">`;
+        if (i === 0 || (i + 1) % (wide ? 10 : 20) === 0) o += `<text class="idx" x="${cx + CW / 2}" y="${y0 + HP - 3}">${i + 1}</text>`;
+        o += cell(cx, y0 + yObs, CW, HC, x[i] ? 'o1' : 'o0', wide ? x[i] : '');
+        if (truth) o += cell(cx, y0 + yTru, CW, HC, truth[i] ? 'sC' : 'sF', wide ? SN[truth[i]] : '');
+        o += `<rect class="bbg" x="${cx}" y="${y0 + yBar}" width="${CW}" height="${HB}"/>`;
+        const pc = av.postC(i);
+        if (pc) {
+          const h = pc.v * HB;
+          o += `<rect class="bar${pc.full ? '' : ' fwd'}" x="${cx + 1}" y="${y0 + yBar + HB - h}" width="${CW - 2}" height="${h}"/>`;
+          if (pc.full) { const d = pc.v > 0.5 ? 1 : 0; o += cell(cx, y0 + yDec, CW, HC, (d ? 'sC' : 'sF') + (truth && truth[i] !== d ? ' miss' : ''), wide ? SN[d] : ''); }
+        }
+        o += `<rect class="hit" x="${cx}" y="${y0}" width="${CW}" height="${rowH - RG}"/></g>`;
+      }
+      o += `<line class="mid" x1="${LW}" y1="${y0 + yBar + HB / 2}" x2="${LW + n * CW}" y2="${y0 + yBar + HB / 2}"/>`;
+      if (av.cur >= r * PR && av.cur < r * PR + n) {
+        const cx = LW + (av.cur - r * PR) * CW;
+        o += `<rect class="curbox" x="${cx - 1}" y="${y0 + yObs - 1}" width="${CW + 2}" height="${yDec + HC - yObs + 2}"/>`;
+      }
+    }
+    o += '</svg>';
+    const box = $('strip');
+    box.innerHTML = o;
+    if (av.cur >= 0) {
+      const top = Math.floor(av.cur / PR) * rowH;
+      if (top < box.scrollTop || top + rowH > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - box.clientHeight / 2 + rowH / 2);
+    }
+  }
+
+  function scrollToCur() {
+    const box = $('table'), tr = box.querySelector('tr.cur');
+    if (tr) box.scrollTop = Math.max(0, tr.offsetTop - box.clientHeight / 2);
+  }
+  function renderTableFB() {
+    const x = D.x, L = x.length, truth = truthArr(), av = avail();
+    let o = `<table><thead><tr><th>i</th><th>a<sub>i</sub></th><th>α̃(i,F)</th><th>α̃(i,C)</th><th>s<sub>i</sub></th><th>log P(a<sub>1..i</sub>)</th>` +
+      `<th>β̃(i,F)</th><th>β̃(i,C)</th><th>Pr{Z<sub>i</sub>=F|x}</th><th>Pr{Z<sub>i</sub>=C|x}</th><th>decoded</th>${truth ? '<th>truth</th>' : ''}</tr></thead><tbody>`;
+    for (let i = 0; i < L; i++) {
+      const A = av.hasA(i), B = av.hasB(i);
+      o += `<tr data-i="${i}"${i === av.cur ? ' class="cur"' : ''}><td>${i + 1}</td><td>${x[i]}</td>`;
+      o += A ? `<td>${f4(FB.f[i][0])}</td><td>${f4(FB.f[i][1])}</td><td>${f4(FB.s[i])}</td><td>${f2(FB.logP[i])}</td>` : '<td></td><td></td><td></td><td></td>';
+      o += B ? `<td>${f4(FB.b[i][0])}</td><td>${f4(FB.b[i][1])}</td>` : '<td></td><td></td>';
+      if (A && B) { const d = FB.post[i][1] > 0.5 ? 1 : 0; o += `<td>${f4(FB.post[i][0])}</td><td>${f4(FB.post[i][1])}</td><td>${st(d)}${truth && truth[i] !== d ? ' ✗' : ''}</td>`; }
+      else o += '<td></td><td></td><td></td>';
+      if (truth) o += `<td>${st(truth[i])}</td>`;
+      o += '</tr>';
+    }
+    $('table').innerHTML = o + '</tbody></table>';
+    scrollToCur();
+  }
+  function renderTableEM() {
+    let o = `<table><thead><tr><th>k</th><th>θ<sup>(k)</sup> = e(0|C)</th><th>log P(x; θ<sup>(k)</sup>)</th>` +
+      `<th>n<sub>0</sub> = Σ<sub>a<sub>i</sub>=0</sub> Pr{Z<sub>i</sub>=C|x}</th><th>n<sub>1</sub> = Σ<sub>a<sub>i</sub>=1</sub> Pr{Z<sub>i</sub>=C|x}</th>` +
+      `<th>θ<sup>(k+1)</sup> = n<sub>0</sub>/(n<sub>0</sub>+n<sub>1</sub>)</th><th>|Δθ|</th></tr></thead><tbody>`;
+    for (let j = 0; j <= k; j++) {
+      const s = EM.steps[j];
+      o += `<tr data-k="${j}"${j === k ? ' class="cur"' : ''}><td>${j}</td><td>${f4(s.theta)}</td><td>${f2(s.logP)}</td><td>${f2(s.n0)}</td><td>${f2(s.n1)}</td><td><b>${f4(s.thetaNext)}</b></td><td>${Math.abs(s.thetaNext - s.theta).toExponential(1)}</td></tr>`;
+    }
+    $('table').innerHTML = o + '</tbody></table>';
+    scrollToCur();
+  }
+
+  const CW = 440, CH = 200, ML = 52, MR = 14, MT = 22, MB = 28;
+  function lineChart(id, vals, o) {
+    const KK = vals.length - 1, iw = CW - ML - MR, ih = CH - MT - MB;
+    let lo = o.min ?? Math.min(...vals), hi = o.max ?? Math.max(...vals);
+    if (o.truth != null) { lo = Math.min(lo, o.truth); hi = Math.max(hi, o.truth); }
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.08;
+    if (o.min == null) lo -= pad; if (o.max == null) hi += pad;
+    const sx = i => ML + (KK ? i / KK * iw : iw / 2), sy = v => MT + ih - (v - lo) / (hi - lo) * ih;
+    const mag = Math.pow(10, Math.floor(Math.log10((hi - lo) / 4)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => (hi - lo) / s <= 5.5);
+    let out = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}" viewBox="0 0 ${CW} ${CH}"><g class="ax">`;
+    for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step)
+      out += `<line x1="${ML}" y1="${sy(v)}" x2="${ML + iw}" y2="${sy(v)}" stroke-dasharray="2 3"/><text x="${ML - 6}" y="${sy(v) + 3}" text-anchor="end">${o.fmt(v)}</text>`;
+    const xstep = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(s => KK / s <= 10) || 500;
+    for (let i = 0; i <= KK; i += xstep) out += `<line x1="${sx(i)}" y1="${MT + ih}" x2="${sx(i)}" y2="${MT + ih + 4}"/><text x="${sx(i)}" y="${MT + ih + 15}" text-anchor="middle">${i}</text>`;
+    out += `<line x1="${ML}" y1="${MT + ih}" x2="${ML + iw}" y2="${MT + ih}"/><line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT + ih}"/>`;
+    out += `<text x="${ML + iw / 2}" y="${CH - 2}" text-anchor="middle">EM iteration</text></g>`;
+    out += `<text class="ctitle" x="${ML}" y="${MT - 9}">${o.title}</text>`;
+    if (o.truth != null) out += `<line class="tru" x1="${ML}" y1="${sy(o.truth)}" x2="${ML + iw}" y2="${sy(o.truth)}"/>`;
+    out += `<polyline class="ln" points="${vals.map((v, i) => `${sx(i)},${sy(v)}`).join(' ')}"/>`;
+    out += `<line class="kmark" x1="${sx(k)}" y1="${MT}" x2="${sx(k)}" y2="${MT + ih}"/><circle class="dotk" cx="${sx(k)}" cy="${sy(vals[k])}" r="4"/>`;
+    $(id).innerHTML = out + '</svg>';
+  }
+  function renderCharts() {
+    const tr = truthArr() ? M.e[1][0] : null;
+    lineChart('chart1', EM.steps.map(s => s.theta), { min: 0, max: 1, truth: tr, fmt: v => v.toFixed(1), title: 'θ = e(0|C) by iteration' });
+    lineChart('chart2', EM.steps.map(s => s.logP), { fmt: v => String(Math.round(v)), title: 'log P(x; θ) by iteration (never decreases)' });
+  }
+
+  // ---------- explanations ----------
+  function explainFB(i, asStep) {
+    const x = D.x, L = x.length, { p, e, q } = M, a = x[i], av = avail(), truth = truthArr();
+    const hasA = av.hasA(i), hasB = av.hasB(i), parts = [];
+    const head = `<b>${asStep ? (k <= L ? 'Forward pass' : 'Backward pass') + ', position' : 'Position'} ${i + 1}</b> (a<sub>${i + 1}</sub> = ${a}${truth ? `, truth ${st(truth[i])}` : ''}):`;
+    if (hasA && (!asStep || k <= L)) {
+      const u = FB.fu[i], s = FB.s[i], f = FB.f[i];
+      if (i === 0) parts.push(`α(1,F) = e(${a}|F)·q(F) = ${fp(e[0][a])}·${f3(q[0])} = ${f4(u[0])} and α(1,C) = e(${a}|C)·q(C) = ${fp(e[1][a])}·${f3(q[1])} = ${f4(u[1])}; ` +
+        `their sum is the scale s<sub>1</sub> = ${f4(s)}, and dividing by it gives α̃(1,·) = (${f4(f[0])}, ${f4(f[1])})`);
+      else {
+        const g = FB.f[i - 1];
+        parts.push(`α̃(${i + 1},F) = e(${a}|F)·[α̃(${i},F)p(F|F) + α̃(${i},C)p(F|C)] / s<sub>${i + 1}</sub> = ${fp(e[0][a])}·[${f4(g[0])}·${fp(p[0][0])} + ${f4(g[1])}·${fp(p[1][0])}] / s<sub>${i + 1}</sub> = ${f4(u[0])} / s<sub>${i + 1}</sub>; ` +
+          `α̃(${i + 1},C) = ${fp(e[1][a])}·[${f4(g[0])}·${fp(p[0][1])} + ${f4(g[1])}·${fp(p[1][1])}] / s<sub>${i + 1}</sub> = ${f4(u[1])} / s<sub>${i + 1}</sub>. ` +
+          `The scale is the sum s<sub>${i + 1}</sub> = ${f4(u[0])} + ${f4(u[1])} = ${f4(s)}, so α̃(${i + 1},·) = (${f4(f[0])}, ${f4(f[1])})`);
+      }
+      let lp = `log P(a<sub>1..${i + 1}</sub>) = Σ<sub>j≤${i + 1}</sub> log s<sub>j</sub> = ${f2(FB.logP[i])}`;
+      if (i === L - 1) {
+        lp += `; the forward pass is done and P(x) = Π<sub>j</sub> s<sub>j</sub> ≈ ${pow10(FB.logP[i])}`;
+      }
+      parts.push(lp);
+    }
+    if (hasB && (!asStep || k > L)) {
+      if (i === L - 1) parts.push(`β̃(${L},F) = β̃(${L},C) = 1 because the suffix after the last throw is empty`);
+      else {
+        const b = FB.b[i], bn = FB.b[i + 1], an = x[i + 1], sn = FB.s[i + 1];
+        parts.push(`β̃(${i + 1},F) = [β̃(${i + 2},F)e(${an}|F)p(F|F) + β̃(${i + 2},C)e(${an}|C)p(C|F)] / s<sub>${i + 2}</sub> = [${f4(bn[0])}·${fp(e[0][an])}·${fp(p[0][0])} + ${f4(bn[1])}·${fp(e[1][an])}·${fp(p[0][1])}] / ${f4(sn)} = ${f4(b[0])}; ` +
+          `β̃(${i + 1},C) = [${f4(bn[0])}·${fp(e[0][an])}·${fp(p[1][0])} + ${f4(bn[1])}·${fp(e[1][an])}·${fp(p[1][1])}] / ${f4(sn)} = ${f4(b[1])}`);
+      }
+    }
+    if (hasA && hasB) {
+      const pc = FB.post[i][1], d = pc > 0.5 ? 1 : 0;
+      parts.push(`posterior Pr{Z<sub>${i + 1}</sub> = C | x} = α̃(${i + 1},C)·β̃(${i + 1},C) = ${f4(FB.f[i][1])}·${f4(FB.b[i][1])} = <b>${f4(pc)}</b>, so decode ${st(d)}` +
+        (truth ? (truth[i] === d ? ' ✓' : ' ✗ (wrong)') : ''));
+    } else if (hasA) parts.push(`the light bar is α̃(${i + 1},C) = Pr{Z<sub>${i + 1}</sub> = C | a<sub>1..${i + 1}</sub>}, using the prefix only; the backward pass will add the suffix`);
+    else if (!hasB) parts.push('not computed yet');
+    return `${head} ${parts.join('. ')}.`;
+  }
+  function explainEM(j) {
+    const s = EM.steps[j], tr = truthArr() ? M.e[1][0] : null;
+    let o = `<b>Iteration ${j}:</b> `;
+    if (j === 0) o += `start from the guess θ<sup>(0)</sup> = ${f4(s.theta)}. `;
+    o += `<b>E-step</b> with e(0|C) = θ<sup>(${j})</sup> = ${f4(s.theta)}: the scaled forward–backward gives Pr{Z<sub>i</sub> = C | x} at every throw (bars above), ` +
+      `and log P(x; θ<sup>(${j})</sup>) = Σ log s<sub>i</sub> = ${f2(s.logP)}. <b>M-step:</b> expected heads thrown by the cheat coin n<sub>0</sub> = Σ<sub>i: a<sub>i</sub>=0</sub> Pr{Z<sub>i</sub>=C|x} = ${f2(s.n0)}, ` +
+      `expected tails n<sub>1</sub> = Σ<sub>i: a<sub>i</sub>=1</sub> Pr{Z<sub>i</sub>=C|x} = ${f2(s.n1)}, so θ<sup>(${j + 1})</sup> = n<sub>0</sub>/(n<sub>0</sub>+n<sub>1</sub>) = ${f2(s.n0)}/${f2(s.n0 + s.n1)} = <b>${f4(s.thetaNext)}</b>` +
+      (tr !== null ? ` (the throws were simulated with e(0|C) = ${fp(tr)})` : '') + '.';
+    if (j === K()) o += EM.converged ? ` <b>Converged:</b> θ changes by less than ${TOL}.` : ` <span class="cC">Stopped after ${MAXIT} iterations without converging.</span>`;
+    return o;
+  }
+  function explainEMpos(i) {
+    const s = EM.steps[k], a = D.x[i], pc = s.post[i][1], truth = truthArr();
+    return `<b>Position ${i + 1}</b> (a<sub>${i + 1}</sub> = ${a}${truth ? `, truth ${st(truth[i])}` : ''}): Pr{Z<sub>${i + 1}</sub> = C | x} = ${f4(pc)} under θ<sup>(${k})</sup> = ${f4(s.theta)}, ` +
+      `so this throw adds ${f4(pc)} to ${a === 0 ? 'n<sub>0</sub> (expected cheat-coin heads)' : 'n<sub>1</sub> (expected cheat-coin tails)'} and ${f4(1 - pc)} to the fair coin. Decoded ${st(pc > 0.5 ? 1 : 0)}.`;
+  }
+  function showExplainDefault() {
+    if (D.error) { $('explain').innerHTML = `<span class="cC">${esc(D.error)}</span>`; return; }
+    if (mode === 'em') { $('explain').innerHTML = explainEM(k); return; }
+    const L = D.x.length;
+    if (k === 0) {
+      $('explain').innerHTML = `<b>Start.</b> The forward pass computes α̃(i,·) left to right; each column is rescaled to sum to 1, so α̃(i,C) = Pr{Z<sub>i</sub> = C | a<sub>1..i</sub>} and the scale s<sub>i</sub> is remembered. ` +
+        `The backward pass then computes β̃ right to left with the same scales, and α̃β̃ is the posterior Pr{Z<sub>i</sub> = t | x}. Press → to start, or hover a column or a table row.`;
+      return;
+    }
+    let o = explainFB(avail().cur, true);
+    if (k === 2 * L) { const ac = accuracy(); o += ` <b>Done.</b>` + (ac ? ` Posterior decoding (C when Pr{Z<sub>i</sub>=C|x} > 0.5) matches the truth at ${ac.ok} of ${L} positions.` : ''); }
+    $('explain').innerHTML = o;
+  }
+
+  function renderStatus() {
+    const L = D.x.length;
+    if (mode === 'em') {
+      const s = EM.steps[k], KK = K();
+      $('status').innerHTML = `Iteration <b>${k}</b> / ${KK} · L = ${L} throws · θ<sup>(${k})</sup> = ${f4(s.theta)} · log P(x; θ<sup>(${k})</sup>) = ${f2(s.logP)}` +
+        (k === KK ? (EM.converged ? ' · converged' : ' · iteration limit') : '');
+      return;
+    }
+    let o = `Step <b>${k}</b> / ${2 * L} · L = ${L} throws · ` + (k === 0 ? 'not started' : k <= L ? `forward pass at position ${k}` : `backward pass at position ${2 * L - k + 1}`);
+    if (k >= L) o += ` · log P(x) = ${f2(FB.logP[L - 1])} (P(x) ≈ ${pow10(FB.logP[L - 1])})`;
+    const ac = accuracy();
+    if (k === 2 * L && ac) o += ` · decoding correct at ${ac.ok}/${L}`;
+    $('status').innerHTML = o;
+  }
+
+  function render() {
+    const em = mode === 'em';
+    $('lblTheta').hidden = !em; $('emwrap').hidden = !em;
+    $('h4').textContent = em ? '4 EM iterations: E-step sums and the updated θ' : '4 Scaled forward and backward values by position';
+    renderModel();
+    $('derr').textContent = D.error || '';
+    $('truthnote').textContent = D.error || truthArr() ? '' : 'The observation has been edited, so the hidden truth is unknown and not drawn.';
+    if (D.error) {
+      for (const id of ['strip', 'table', 'chart1', 'chart2', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    renderStrip();
+    if (em) { renderTableEM(); renderCharts(); } else renderTableFB();
+    renderStatus();
+    showExplainDefault();
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = $('btnRun').disabled = k === K();
+  }
+
+  // ---------- events ----------
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnRun').addEventListener('click', () => setK(K()));
+  $('btnReset').addEventListener('click', () => setK(0));
+  $('btnSim').addEventListener('click', () => resim(true));
+  $('btnSlide').addEventListener('click', loadSlide);
+  for (const id of ['len', 'seed', 'pFF', 'pCC', 'eF', 'eC']) $(id).addEventListener('change', () => resim(false));
+  $('theta0').addEventListener('change', rebuild);
+  $('selMode').addEventListener('change', rebuild);
+  $('obs').addEventListener('input', rebuild);
+  $('strip').addEventListener('mouseover', e => {
+    const g = e.target.closest('g.pos'); if (!g || D.error) return;
+    $('explain').innerHTML = mode === 'em' ? explainEMpos(+g.dataset.i) : explainFB(+g.dataset.i, false);
+  });
+  $('strip').addEventListener('mouseout', e => { if (e.target.closest('g.pos')) showExplainDefault(); });
+  $('table').addEventListener('mouseover', e => {
+    const tr = e.target.closest('tr[data-i], tr[data-k]'); if (!tr || D.error) return;
+    $('explain').innerHTML = tr.dataset.k !== undefined ? explainEM(+tr.dataset.k) : explainFB(+tr.dataset.i, false);
+  });
+  $('table').addEventListener('mouseout', e => { if (e.target.closest('tr[data-i], tr[data-k]')) showExplainDefault(); });
+  $('table').addEventListener('click', e => { const tr = e.target.closest('tr[data-k]'); if (tr) setK(+tr.dataset.k); });
+  for (const id of ['chart1', 'chart2']) $(id).addEventListener('click', e => {
+    const svg = $(id).querySelector('svg'); if (!svg || !EM) return;
+    const x = e.clientX - svg.getBoundingClientRect().left;
+    setK(Math.round((x - ML) / (CW - ML - MR) * K()));
+  });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(K()); break;
+      case 'r': case 'R': setK(0); break;
+      case 's': case 'S': resim(true); break;
+      case 'm': case 'M': $('selMode').value = mode === 'fb' ? 'em' : 'fb'; rebuild(); break;
+    }
+  });
+
+  resim(false);
+})();
+</script>
+</body>
+</html>
