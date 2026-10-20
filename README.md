@@ -2,7 +2,8 @@
 > This project is vibe coded with Claude Code.
 
 Interactive, single-page demos of core sequence-analysis algorithms, from alignment
-and read mapping to assembly, RNA-seq quantification and hidden Markov models, written for teaching. Each
+and read mapping to assembly, RNA-seq quantification, hidden Markov models and haplotype
+phasing, written for teaching. Each
 page takes toy inputs you can edit and lets you step through the algorithm one
 action at a time.
 
@@ -16,6 +17,7 @@ action at a time.
 | `rna-seq-em.html` | RNA-seq quantification: resolving multi-mapped reads with EM |
 | `hmm.html` | Hidden Markov model: forward–backward with rescaling, posterior decoding, EM |
 | `msa.html` | Progressive multiple sequence alignment: distances, UPGMA guide tree, profile alignment |
+| `li-stephens.html` | Li–Stephens HMM: diploid phasing and imputation, Viterbi vs posterior decoding |
 
 `index.html` only links to the pages above.
 

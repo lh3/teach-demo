@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Li–Stephens HMM: Phasing and Imputation</title>
+<style>
+  :root {
+    --a: #e0301e; --b: #1f4fd8;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --het: #e8641b; --err: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label, .params label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { font: inherit; width: 5.5em; padding: 3px 4px; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  textarea, input[type=text] { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; box-sizing: border-box; width: 20em; display: block; }
+  textarea { height: 9em; resize: vertical; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 6px; }
+  .err { color: var(--err); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .lbl { display: block; font-size: .9rem; color: #444; margin: 8px 0 3px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 44px; align-items: flex-start; }
+  .top > div:first-child { flex: 0 0 auto; max-width: 340px; }
+  .top > div:last-child { flex: 1 1 520px; max-width: 780px; }
+  .top .controls { margin: 10px 0 0; }
+  .params { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: .9rem; margin-bottom: 4px; }
+  .formula { font-size: .9rem; line-height: 1.55; }
+  .formula p { margin: 6px 0; }
+  .formula .note { margin-top: 6px; }
+  .stepc { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ddd; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  .pa { color: var(--a); font-weight: 700; } .pb { color: var(--b); font-weight: 700; }
+  .errc { color: var(--err); fill: var(--err); }
+  [hidden] { display: none !important; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .scroll { overflow-x: auto; }
+
+  /* emission table */
+  table { border-collapse: collapse; font-size: .88rem; margin: 4px 0; }
+  th, td { padding: 3px 10px; border-bottom: 1px solid #e3e3e3; text-align: left; white-space: nowrap; }
+  th { color: #555; font-weight: 600; border-bottom: 1.5px solid #bbb; }
+
+  /* panel */
+  .pl { font: 600 15px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .pl.het { fill: var(--het); }
+  .pl.imp { font-weight: 800; }
+  .ibg { fill: var(--curbg); pointer-events: none; }
+  .box { fill: none; stroke: #222; stroke-width: 1.2; }
+  .box.g { stroke: #999; }
+  .box.a { stroke: var(--a); } .box.b { stroke: var(--b); }
+  .rl { font: 12px system-ui, sans-serif; fill: #555; text-anchor: end; dominant-baseline: central; }
+  .rl.a { fill: var(--a); font-weight: 600; } .rl.b { fill: var(--b); font-weight: 600; }
+  .idx { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; }
+  .path { fill: none; stroke-width: 2; stroke-linejoin: round; opacity: .85; pointer-events: none; }
+  .path.a { stroke: var(--a); } .path.b { stroke: var(--b); }
+  .hit { fill: transparent; }
+  .col:hover .hit { fill: rgba(230, 168, 0, .15); }
+  .curbox { fill: none; stroke: var(--cur); stroke-width: 2.5; pointer-events: none; }
+  #paths { font-size: .9rem; margin: 8px 0 4px; line-height: 1.8; }
+  .pth { cursor: pointer; padding: 0 6px; border-left: 3px solid transparent; }
+  .pth.sel { border-left-color: var(--cur); }
+  .pth .pn { display: inline-block; min-width: 9.5em; color: #444; font-weight: 600; }
+  .pth .st { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+  .pth .st.diff { background: var(--curbg); }
+  .pth .dim { color: #bbb; }
+  .pth .lp { color: #555; margin-left: 8px; white-space: nowrap; }
+
+  /* state grids */
+  .gc { stroke: #d4d4d4; stroke-width: .8; }
+  .gc:hover { stroke: #222; stroke-width: 1.5; }
+  .gt { font: 9.5px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: #222; }
+  .gt.w { fill: #fff; }
+  .dec { fill: none; stroke: #111; stroke-width: 2.2; pointer-events: none; }
+  .bl { font: 600 12px system-ui, sans-serif; fill: #444; }
+  .gh { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; }
+  .gg { font: 700 13px ui-monospace, Menlo, Consolas, monospace; fill: #222; text-anchor: middle; }
+  .gg.het { fill: var(--het); }
+  .rn { font: 10px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; font-weight: 600; }
+  .rn.a { fill: var(--a); } .rn.b { fill: var(--b); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; }
+  .legend .box2 { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+  .legend .ln2 { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid; }
+</style>
+</head>
+<body>
+<h1>Li–Stephens HMM: phasing and imputing a diploid genotype</h1>
+
+<p class="hint">
+  The two copies of a sample's genome are modelled as mosaics of the haplotypes in a reference panel. At every SNP the
+  hidden state says which panel haplotype each copy is copying. Given the panel and the sample's unphased genotype, the
+  HMM recovers this pair of paths. The path phases the genotype, and it also fills in missing genotypes (<span class="mono">?</span>)
+  from the haplotypes being copied. You can edit the panel or the genotype to rerun.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset,
+  <kbd>v</kbd> switch the drawn path between Viterbi and posterior decoding.
+</p>
+
+<div class="top">
+  <div>
+    <h2>1 Reference panel and genotype</h2>
+    <label class="lbl" for="panel">Panel: one haplotype per line (hap1, hap2, …), A/C/G/T</label>
+    <textarea id="panel" spellcheck="false" autocomplete="off"></textarea>
+    <label class="lbl" for="geno">Unphased genotype, one letter per SNP</label>
+    <input type="text" id="geno" spellcheck="false" autocomplete="off">
+    <div class="note">R = A/G · Y = C/T · K = G/T · M = A/C · S = C/G · W = A/T · <span class="mono">?</span> or N = missing</div>
+    <div class="controls">
+      <button id="btnSlide" title="The panel and genotype from the slides">Slides example</button>
+      <button id="btnImp" title="The same with two genotypes missing">Imputation example</button>
+    </div>
+    <div id="derr" class="err"></div>
+  </div>
+  <div>
+    <h2>2 Model</h2>
+    <div class="params">
+      <label>recombination r = <input type="number" id="rr" autocomplete="off" value="0.01" min="0.0001" max="1" step="0.01"></label>
+      <label>error ε = <input type="number" id="eps" autocomplete="off" value="0.01" min="0.0001" max="0.5" step="0.01"></label>
+    </div>
+    <div id="formula" class="formula"></div>
+  </div>
+</div>
+
+<div class="controls stepc">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+  <label>Path drawn <select id="show"><option value="v">Viterbi</option><option value="p">posterior decoding</option></select></label>
+</div>
+
+<h2>3 Panel, decoded path and phased haplotypes</h2>
+<div class="legend">
+  <span><span class="ln2" style="border-color:var(--a)"></span>copy a (first haplotype of the state)</span>
+  <span><span class="ln2" style="border-color:var(--b)"></span>copy b (second)</span>
+  <span><span class="mono errc">g</span> lowercase: observed allele differs from the copied one (an error)</span>
+  <span><span class="box2" style="background:var(--curbg)"></span><b class="mono">T</b> bold: imputed from the copied haplotype</span>
+</div>
+<div id="psvg" class="scroll"></div>
+<div id="paths"></div>
+
+<h2>4 Hidden states (a, b) at every SNP</h2>
+<div class="legend">
+  <span>One n×n grid per SNP: row = a (copy a), column = b (copy b); shade = value ÷ largest value at that SNP</span>
+  <span><span class="box2" style="background:#1a8f55;opacity:.45"></span>forward α̃ only</span>
+  <span><span class="box2" style="background:#1a8f55"></span>posterior α̃β̃</span>
+  <span><span class="box2" style="border:2px solid #111"></span>decoded state</span>
+</div>
+<div id="grids" class="scroll"></div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const DEFAULTS = { rr: 0.01, eps: 0.01 };
+  const SLIDE_PANEL = 'ATCGTAGCC\nAGCGCAGTC\nTTAGTAGTT\nAGCATGCCC', SLIDE_G = 'AKCGTRGYY', IMPUTE_G = 'A?C?TRGYY';
+  const HAPC = ['#9a2fa6', '#2a6db0', '#a8661b', '#555', '#2e8b57', '#8a7a00', '#c2185b', '#00838f'];   // slide colours first
+  const COL_A = '#e0301e', COL_B = '#1f4fd8', COL_E = '#6b6b6b', COL_F = '#1a8f55', COL_V = '#8a3ab9';
+  const f2 = x => x.toFixed(2), f3 = x => x.toFixed(3), f4 = x => x.toFixed(4);
+  const fv = x => x === 0 ? '0' : Math.abs(x) >= 1e-4 ? String(+x.toPrecision(4)) : x.toExponential(2);
+
+  // ---------- pure model ----------
+  const MAXN = 8, MAXM = 30, TIE = 1e-9;
+  const IUPAC = { A: 'AA', C: 'CC', G: 'GG', T: 'TT', R: 'AG', Y: 'CT', K: 'GT', M: 'AC', S: 'CG', W: 'AT' };
+
+  function parsePanel(text) {
+    const H = text.split('\n').map(l => l.replace(/\s+/g, '').toUpperCase()).filter(l => l);
+    if (H.length < 2) return { error: 'The panel needs at least two haplotypes, one per line.' };
+    if (H.length > MAXN) return { error: `At most ${MAXN} haplotypes.` };
+    for (let k = 0; k < H.length; k++) {
+      if (/[^ACGT]/.test(H[k])) return { error: `Haplotype ${k + 1} may only contain A, C, G and T.` };
+      if (H[k].length !== H[0].length) return { error: `Haplotype ${k + 1} has ${H[k].length} SNPs but haplotype 1 has ${H[0].length}.` };
+    }
+    if (H[0].length > MAXM) return { error: `At most ${MAXM} SNPs.` };
+    return { H };
+  }
+  // Genotype letters -> per SNP [x, y] (null if missing). Every SNP must be biallelic over the panel plus the genotype.
+  function parseGeno(text, H) {
+    const s = text.replace(/\s+/g, '').toUpperCase().replace(/[N.]/g, '?'), m = H[0].length;
+    if (/[^ACGTRYKMSW?]/.test(s)) return { error: 'The genotype may only contain A, C, G, T, the IUPAC codes R Y K M S W, and ? or N for a missing genotype.' };
+    if (s.length !== m) return { error: `The genotype has ${s.length} letters but the panel has ${m} SNPs.` };
+    const G = [];
+    for (let i = 0; i < m; i++) {
+      const g = IUPAC[s[i]], al = new Set(H.map(h => h[i]));
+      if (g) { al.add(g[0]); al.add(g[1]); }
+      if (al.size > 2) return { error: `SNP ${i + 1} has more than two alleles (${[...al].sort().join(', ')}); every SNP must be biallelic.` };
+      G.push(g ? [g[0], g[1]] : null);
+    }
+    return { G, code: [...s] };
+  }
+
+  // Emission of genotype g when the copies copy alleles p and q. Each observed allele equals its template with
+  // probability 1-eps; the genotype is unordered, so a heterozygote sums over both ways of assigning its alleles.
+  function emitPair(g, p, q, eps) {
+    if (!g) return 1;
+    const e = (x, h) => x === h ? 1 - eps : eps, [x, y] = g;
+    return x === y ? e(x, p) * e(x, q) : e(x, p) * e(y, q) + e(y, p) * e(x, q);
+  }
+  // E[i][z] for the ordered state z = a*n + b.
+  function emissions(G, H, eps) {
+    const n = H.length;
+    return G.map((g, i) => { const E = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) E.push(emitPair(g, H[a][i], H[b][i], eps)); return E; });
+  }
+  // Pair transition z -> y: each copy keeps its template with probability 1-r, or recombines and draws a new one
+  // uniformly from all n haplotypes, so t(a'|a) = (1-r)[a'=a] + r/n and P(y|z) = t(a_y|a_z) t(b_y|b_z).
+  function trans(n, r) {
+    const st = 1 - r + r / n, sw = r / n;
+    return (z, y) => (Math.floor(z / n) === Math.floor(y / n) ? st : sw) * (z % n === y % n ? st : sw);
+  }
+  const nsw = (n, z, y) => (Math.floor(z / n) !== Math.floor(y / n)) + (z % n !== y % n);   // copies that switch from z to y
+
+  // sum_{a',b'} g(a',b') t(a|a') t(b|b') for every (a,b) in O(n^2): (1-r)^2 g(a,b) + (1-r)(r/n)(R_a + C_b) + (r/n)^2 S,
+  // where R and C are the row and column sums of g and S its total. t is symmetric, so this serves both passes.
+  function mix(g, n, r) {
+    const R = Array(n).fill(0), C = Array(n).fill(0), out = [];
+    let S = 0;
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { const v = g[a * n + b]; R[a] += v; C[b] += v; S += v; }
+    const k0 = (1 - r) * (1 - r), k1 = (1 - r) * r / n, k2 = (r / n) * (r / n);
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) out.push(k0 * g[a * n + b] + k1 * (R[a] + C[b]) + k2 * S);
+    return out;
+  }
+
+  // Scaled forward-backward over the n^2 states, as in hmm.html: f[i] sums to 1 with scale s[i], b[i] is the scaled
+  // backward, post[i] = f*b = P(z_i | x), logP[i] = sum_{j<=i} log s_j.
+  function forwardBackward(E, n, r) {
+    const m = E.length, N = n * n, f = [], s = [], b = [], logP = [];
+    let lp = 0;
+    for (let i = 0; i < m; i++) {
+      const pr = i === 0 ? Array(N).fill(1 / N) : mix(f[i - 1], n, r);
+      const u = pr.map((v, z) => v * E[i][z]), si = u.reduce((x, y) => x + y, 0);
+      s.push(si); f.push(u.map(v => v / si));
+      lp += Math.log(si); logP.push(lp);
+    }
+    b[m - 1] = Array(N).fill(1);
+    for (let i = m - 2; i >= 0; i--) b[i] = mix(b[i + 1].map((v, z) => v * E[i + 1][z]), n, r).map(v => v / s[i + 1]);
+    const post = f.map((fi, i) => fi.map((v, z) => v * b[i][z]));
+    return { f, s, b, post, logP };
+  }
+
+  // Viterbi with each column rescaled so its best state is 1; c[i] is the scale and logP = sum log c[i] is the log
+  // joint probability of the best path. Ties within TIE go to the predecessor where fewer copies switch, then to the
+  // lower state index; the path ends in the lowest-index best state.
+  function viterbi(E, n, r) {
+    const m = E.length, N = n * n, t = trans(n, r), v = [], bp = [], c = [];
+    let lc = 0;
+    for (let i = 0; i < m; i++) {
+      const u = [], p = [];
+      for (let z = 0; z < N; z++) {
+        let best = 1 / N, arg = -1;
+        if (i > 0) {
+          best = -1;
+          for (let y = 0; y < N; y++) {
+            const w = v[i - 1][y] * t(y, z);
+            if (w > best * (1 + TIE) || (w >= best * (1 - TIE) && nsw(n, y, z) < nsw(n, arg, z))) { best = w; arg = y; }
+          }
+        }
+        u.push(best * E[i][z]); p.push(arg);
+      }
+      const ci = Math.max(...u);
+      c.push(ci); lc += Math.log(ci); v.push(u.map(x => x / ci)); bp.push(p);
+    }
+    let z = 0;
+    while (v[m - 1][z] < 1 - TIE) z++;
+    const path = [z];
+    for (let i = m - 1; i > 0; i--) path.unshift(z = bp[i][z]);
+    return { v, bp, c, logP: lc, path };
+  }
+
+  // Posterior decoding: the most probable state at each SNP. P(a,b|x) = P(b,a|x), so a state ties with its mirror;
+  // going right to left, ties go to the state with the larger transition into the state chosen at the next SNP.
+  function posteriorPath(post, n, r) {
+    const m = post.length, N = n * n, t = trans(n, r), path = [];
+    for (let i = m - 1; i >= 0; i--) {
+      const pm = Math.max(...post[i]);
+      let best = -1, bt = -1;
+      for (let z = 0; z < N; z++) {
+        if (post[i][z] < pm * (1 - TIE)) continue;
+        const tz = i === m - 1 ? 0 : t(z, path[0]);
+        if (best < 0 || tz > bt * (1 + TIE)) { best = z; bt = tz; }
+      }
+      path.unshift(best);
+    }
+    return path;
+  }
+  function pathLogP(path, E, n, r) {
+    const t = trans(n, r);
+    let lp = Math.log(1 / (n * n));
+    path.forEach((z, i) => { lp += Math.log(E[i][z]) + (i ? Math.log(t(path[i - 1], z)) : 0); });
+    return lp;
+  }
+
+  // Phased alleles along a path. At a called SNP the two observed alleles are assigned to the copies so that most
+  // match their templates ('ok', or 'err' for one that differs; with a homozygous template and a heterozygous call
+  // copy b takes the error); at a missing SNP each copy takes its template allele ('imp').
+  function phase(path, G, H) {
+    const n = H.length, A = [], B = [];
+    path.forEach((z, i) => {
+      const a = Math.floor(z / n), b = z % n, p = H[a][i], q = H[b][i], g = G[i];
+      if (!g) { A.push({ ch: p, src: a, flag: 'imp' }); B.push({ ch: q, src: b, flag: 'imp' }); return; }
+      const m1 = (p === g[0]) + (q === g[1]), m2 = (p === g[1]) + (q === g[0]);
+      const [x, y] = m1 > m2 || (m1 === m2 && p === g[0]) ? g : [g[1], g[0]];
+      A.push({ ch: x, src: a, flag: x === p ? 'ok' : 'err' }); B.push({ ch: y, src: b, flag: y === q ? 'ok' : 'err' });
+    });
+    return { A, B };
+  }
+  // Posterior of the unordered genotype the two copies copy at SNP i (the imputed genotype at a missing SNP).
+  function genoPost(post, H, i) {
+    const n = H.length, d = {};
+    for (let z = 0; z < n * n; z++) { const g = [H[Math.floor(z / n)][i], H[z % n][i]].sort().join('/'); d[g] = (d[g] || 0) + post[z]; }
+    return d;
+  }
+
+  function buildModel(panelText, genoText, r, eps) {
+    const P = parsePanel(panelText); if (P.error) return P;
+    const Q = parseGeno(genoText, P.H); if (Q.error) return Q;
+    const H = P.H, n = H.length, E = emissions(Q.G, H, eps);
+    const fb = forwardBackward(E, n, r), vt = viterbi(E, n, r), pp = posteriorPath(fb.post, n, r);
+    return {
+      H, n, m: H[0].length, G: Q.G, code: Q.code, r, eps, E, fb, vt,
+      path: { v: vt.path, p: pp },
+      logPath: { v: pathLogP(vt.path, E, n, r), p: pathLogP(pp, E, n, r) },
+      phased: { v: phase(vt.path, Q.G, H), p: phase(pp, Q.G, H) },
+    };
+  }
+
+  // ---------- state ----------
+  let M = null, k = 0, show = 'v';
+  const clampR = v => Math.min(1, Math.max(0.0001, isFinite(v) && v > 0 ? v : 0.01));
+  const clampE = v => Math.min(0.5, Math.max(0.0001, isFinite(v) && v > 0 ? v : 0.01));
+  function rebuild() {
+    M = buildModel($('panel').value, $('geno').value, clampR(+$('rr').value), clampE(+$('eps').value));
+    k = 0;
+    render();
+  }
+  function load(g) { $('panel').value = SLIDE_PANEL; $('geno').value = g; rebuild(); }
+  const K = () => M.error ? 0 : 2 * M.m;
+  const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
+  const setShow = d => { show = d; render(); };
+  // Step k: forward sweep k = 1..m fills SNP k; backward sweep k = m+1..2m fills SNP 2m+1-k (1-based).
+  function avail() {
+    const m = M.m;
+    return { fw: Math.min(k, m), bFrom: k > m ? 2 * m - k : m, cur: k === 0 ? -1 : k <= m ? k - 1 : 2 * m - k };
+  }
+  const za = z => Math.floor(z / M.n), zb = z => z % M.n;
+  const stTxt = z => `(<span class="pa">${za(z) + 1}</span>,<span class="pb">${zb(z) + 1}</span>)`;
+  const gTxt = i => M.G[i] ? (M.G[i][0] === M.G[i][1] ? `${M.G[i][0]}/${M.G[i][0]}` : `${M.code[i]} = ${M.G[i][0]}/${M.G[i][1]}`) : '? (missing)';
+  const bestZ = col => { let z = 0; while (col[z] < 1 - TIE) z++; return z; };
+  function topPairs(p) {
+    const n = M.n, out = [];
+    for (let a = 0; a < n; a++) for (let b = a; b < n; b++) out.push([a, b, a === b ? p[a * n + b] : p[a * n + b] + p[b * n + a]]);
+    return out.sort((x, y) => y[2] - x[2]);
+  }
+  const pairsTxt = (p, j) => topPairs(p).slice(0, j).map(([a, b, v]) => `{${a + 1},${b + 1}} ${f3(v)}`).join(', ');
+
+  // ---------- rendering ----------
+  function renderModel() {
+    const r = clampR(+$('rr').value), e = clampE(+$('eps').value), n = M.error ? 0 : M.n;
+    let th = 0;
+    for (let j = 1; j < n; j++) th += 1 / j;
+    let o = `<p><b>States.</b> At SNP i the hidden state is an ordered pair (a<sub>i</sub>, b<sub>i</sub>): copy a of the sample copies panel haplotype a<sub>i</sub> and copy b copies b<sub>i</sub>, ` +
+      `so there are n² states${n ? ` (${n * n} here)` : ''}. The first SNP starts uniform, P(a<sub>1</sub>, b<sub>1</sub>) = 1/n².</p>`;
+    o += `<p><b>Transition.</b> Between SNPs each copy recombines independently with probability r and then copies a haplotype drawn uniformly from all n, possibly the same one: ` +
+      `t(a′|a) = (1−r)·[a′ = a] + r/n` + (n ? `, which is ${fv(1 - r + r / n)} to stay and ${fv(r / n)} for each other haplotype` : '') + `. For the pair, P(a′, b′ | a, b) = t(a′|a)·t(b′|b).</p>`;
+    o += `<p><b>Emission.</b> Each allele of the genotype equals the allele of the haplotype its copy is copying with probability 1−ε, and is the other allele of the SNP otherwise. ` +
+      `The genotype is unordered, so a heterozygote can arise either way round:</p>`;
+    o += `<table><thead><tr><th>template h<sub>i</sub>(a), h<sub>i</sub>(b)</th><th>genotype = template</th><th>one allele differs</th><th>both differ</th></tr></thead><tbody>` +
+      `<tr><td>homozygous</td><td>(1−ε)² = ${fv((1 - e) * (1 - e))}</td><td>2ε(1−ε) = ${fv(2 * e * (1 - e))}</td><td>ε² = ${fv(e * e)}</td></tr>` +
+      `<tr><td>heterozygous</td><td>(1−ε)² + ε² = ${fv((1 - e) * (1 - e) + e * e)}</td><td>ε(1−ε) = ${fv(e * (1 - e))}</td><td>impossible</td></tr>` +
+      `<tr><td>genotype missing</td><td colspan="3">1 for every state</td></tr></tbody></table>`;
+    if (n) o += `<div class="note">Li and Stephens tie ε to the panel size: ε = θ̃/(2(n+θ̃)) with θ̃ = 1/Σ<sub>k=1</sub><sup>n−1</sup> 1/k, which is ${f3(1 / th / (2 * (n + 1 / th)))} for n = ${n}. Here r and ε are fixed and not estimated.</div>`;
+    $('formula').innerHTML = o;
+  }
+
+  const marker = (id, col) => `<marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${col}"/></marker>`;
+  function renderPanel() {
+    const { H, n, m } = M, av = avail(), path = M.path[show], ph = M.phased[show];
+    const LW = 76, CW = 28, RH = 26, G = 6, yG = 18, yH0 = yG + RH + 14, yO0 = yH0 + n * (RH + G) + 10;
+    const yH = h => yH0 + h * (RH + G), yO = j => yO0 + j * (RH + G), cx = i => LW + i * CW + CW / 2;
+    const W = LW + m * CW + 20, HT = yO(2) - G + 4;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${HT}" viewBox="0 0 ${W} ${HT}"><defs>${marker('mkA', COL_A)}${marker('mkB', COL_B)}</defs>`;
+    const row = (y, label, cls) => `<text class="rl ${cls}" x="${LW - 8}" y="${y + RH / 2}">${label}</text><rect class="box ${cls}" x="${LW}" y="${y}" width="${m * CW}" height="${RH}"/>`;
+    o += row(yG, 'genotype', 'g');
+    for (let h = 0; h < n; h++) o += row(yH(h), `hap${h + 1}`, '');
+    o += row(yO(0), 'phased a', 'a') + row(yO(1), 'phased b', 'b');
+    for (let i = 0; i < m; i++) {
+      const het = !M.G[i] || M.G[i][0] !== M.G[i][1];
+      o += `<g class="col" data-i="${i}"><text class="idx" x="${cx(i)}" y="11">${i + 1}</text>`;
+      o += `<text class="pl${het ? ' het' : ''}" x="${cx(i)}" y="${yG + RH / 2}">${M.code[i]}</text>`;
+      for (let h = 0; h < n; h++) o += `<text class="pl" x="${cx(i)}" y="${yH(h) + RH / 2}" fill="${HAPC[h]}">${H[h][i]}</text>`;
+      if (i >= av.bFrom) for (let j = 0; j < 2; j++) {
+        const c = (j ? ph.B : ph.A)[i], y = yO(j) + RH / 2;
+        if (c.flag === 'imp') o += `<rect class="ibg" x="${cx(i) - CW / 2 + 2}" y="${yO(j) + 3}" width="${CW - 4}" height="${RH - 6}"/>`;
+        o += c.flag === 'err' ? `<text class="pl errc" x="${cx(i)}" y="${y}">${c.ch.toLowerCase()}</text>`
+          : `<text class="pl${c.flag === 'imp' ? ' imp' : ''}" x="${cx(i)}" y="${y}" fill="${HAPC[c.src]}">${c.ch}</text>`;
+      }
+      o += `<rect class="hit" x="${LW + i * CW}" y="0" width="${CW}" height="${HT}"/></g>`;
+    }
+    if (av.bFrom < m) for (const [j, cls, off, mk] of [[0, 'a', -3, 'mkA'], [1, 'b', 3, 'mkB']]) {
+      const pts = [];
+      for (let i = av.bFrom; i < m; i++) {
+        const y = yH(j ? zb(path[i]) : za(path[i])) + RH / 2 + off;
+        pts.push(`${cx(i) - 10},${y}`, `${cx(i) + (i === m - 1 ? 12 : 10)},${y}`);
+      }
+      o += `<polyline class="path ${cls}" points="${pts.join(' ')}" marker-end="url(#${mk})"/>`;
+    }
+    if (av.cur >= 0) o += `<rect class="curbox" x="${LW + av.cur * CW}" y="1" width="${CW}" height="${HT - 2}"/>`;
+    $('psvg').innerHTML = o + '</svg>';
+  }
+
+  function renderPaths() {
+    const av = avail(), done = av.bFrom === 0;
+    let o = '';
+    for (const d of ['v', 'p']) {
+      const p = M.path[d], q = M.path[d === 'v' ? 'p' : 'v'];
+      const seq = p.map((z, i) => i >= av.bFrom ? `<span class="st${z !== q[i] ? ' diff' : ''}">${stTxt(z)}</span>` : '<span class="st dim">(·,·)</span>').join(' → ');
+      o += `<div class="pth${d === show ? ' sel' : ''}" data-d="${d}" title="Click to draw this path"><span class="pn">${d === 'v' ? 'Viterbi' : 'Posterior decoding'}</span>${seq}` +
+        (done ? `<span class="lp">log P(x, path) = ${f2(M.logPath[d])}</span>` : '') + '</div>';
+    }
+    $('paths').innerHTML = o;
+  }
+
+  const cellNum = v => v >= 0.995 ? '1' : v < 0.005 ? '' : '.' + String(Math.round(v * 100)).padStart(2, '0');
+  function renderGrids() {
+    const { n, m } = M, N = n * n, av = avail(), fb = M.fb;
+    const CS = n <= 4 ? 26 : n <= 6 ? 17 : 13, GW = n * CS, GAP = CS >= 26 ? 14 : 10, LW = 104, HEAD = 44, BG = 20;
+    const y0 = bd => HEAD + bd * (GW + BG), W = LW + m * (GW + GAP), HT = y0(3) - BG + 4;
+    const labels = [['emission', 'e(a,b)'], ['forward α̃', '→ posterior'], ['Viterbi δ̃', '(max)']];
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${HT}" viewBox="0 0 ${W} ${HT}">`;
+    for (let bd = 0; bd < 3; bd++) {
+      o += `<text class="bl" x="2" y="${y0(bd) + GW / 2 - 7}">${labels[bd][0]}</text><text class="bl" x="2" y="${y0(bd) + GW / 2 + 9}">${labels[bd][1]}</text>`;
+      for (let a = 0; a < n; a++) o += `<text class="rn a" x="${LW - 8}" y="${y0(bd) + a * CS + CS / 2}">${a + 1}</text>`;
+      for (let b = 0; b < n; b++) o += `<text class="rn b" x="${LW + b * CS + CS / 2}" y="${y0(bd) - 7}">${b + 1}</text>`;
+    }
+    for (let i = 0; i < m; i++) {
+      const x0 = LW + i * (GW + GAP), het = !M.G[i] || M.G[i][0] !== M.G[i][1];
+      o += `<text class="gh" x="${x0 + GW / 2}" y="10">SNP ${i + 1}</text><text class="gg${het ? ' het' : ''}" x="${x0 + GW / 2}" y="26">${M.code[i]}</text>`;
+      for (let bd = 0; bd < 3; bd++) {
+        let vals = null, col = COL_E, alpha = 1, dec = -1;
+        if (bd === 0) vals = M.E[i];
+        else if (bd === 1) {
+          col = COL_F;
+          if (i >= av.bFrom) { vals = fb.post[i]; dec = M.path.p[i]; } else if (i < av.fw) { vals = fb.f[i]; alpha = 0.45; }
+        } else { col = COL_V; if (i < av.fw) vals = M.vt.v[i]; if (i >= av.bFrom) dec = M.path.v[i]; }
+        const mx = vals ? Math.max(...vals) : 1;
+        for (let z = 0; z < N; z++) {
+          const x = x0 + zb(z) * CS, y = y0(bd) + za(z) * CS, op = vals ? alpha * vals[z] / mx : 0;
+          o += `<rect class="gc" data-i="${i}" data-z="${z}" data-bd="${bd}" x="${x}" y="${y}" width="${CS}" height="${CS}" fill="${vals ? col : '#fff'}" fill-opacity="${vals ? op.toFixed(3) : 1}"/>`;
+          if (vals && CS >= 26) { const t = cellNum(vals[z]); if (t) o += `<text class="gt${op > 0.55 ? ' w' : ''}" x="${x + CS / 2}" y="${y + CS / 2}">${t}</text>`; }
+        }
+        if (dec >= 0) o += `<rect class="dec" x="${x0 + zb(dec) * CS}" y="${y0(bd) + za(dec) * CS}" width="${CS}" height="${CS}"/>`;
+      }
+      if (i === av.cur) o += `<rect class="curbox" x="${x0 - 5}" y="1" width="${GW + 10}" height="${HT - 2}"/>`;
+    }
+    const box = $('grids');
+    box.innerHTML = o + '</svg>';
+    if (av.cur >= 0) {
+      const x = LW + av.cur * (GW + GAP);
+      if (x < box.scrollLeft + LW || x + GW > box.scrollLeft + box.clientWidth) box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
+    }
+  }
+
+  // ---------- explanations ----------
+  function emitCase(i, z) {
+    const g = M.G[i], p = M.H[za(z)][i], q = M.H[zb(z)][i];
+    if (!g) return ['1', 'the genotype is missing, so every state emits 1 and this SNP adds no evidence'];
+    const hom = g[0] === g[1];
+    if (p === q) {
+      if (hom && g[0] === p) return ['(1−ε)²', 'both copies show their template allele'];
+      if (!hom) return ['2ε(1−ε)', 'one copy, either of the two, shows the other allele'];
+      return ['ε²', 'both copies show the other allele'];
+    }
+    if (!hom) return ['(1−ε)² + ε²', 'both copies show their template alleles, or both show the other one'];
+    return ['ε(1−ε)', `only copy ${p === g[0] ? 'b' : 'a'} shows the other allele`];
+  }
+  function explainEmit(i, z) {
+    const a = za(z), b = zb(z), [form, why] = emitCase(i, z);
+    return `<b>SNP ${i + 1}, state ${stTxt(z)}</b>: copy a copies hap${a + 1} (${M.H[a][i]}) and copy b copies hap${b + 1} (${M.H[b][i]}); the genotype is ${gTxt(i)}. ` +
+      `e<sub>${i + 1}</sub>(${a + 1},${b + 1}) = ${form} = <b>${fv(M.E[i][z])}</b> because ${why}.`;
+  }
+  // The four-term sum of mix() for one state, with numbers. g is the column being mixed; S is its total.
+  function mixTerms(g, z) {
+    const n = M.n, r = M.r, a = za(z), b = zb(z);
+    let R = 0, C = 0, S = 0;
+    for (let y = 0; y < n; y++) { R += g[a * n + y]; C += g[y * n + b]; }
+    for (const v of g) S += v;
+    const k0 = (1 - r) * (1 - r), k1 = (1 - r) * r / n, k2 = (r / n) * (r / n);
+    return { R, C, S, k0, k1, k2, sum: k0 * g[z] + k1 * (R + C) + k2 * S };
+  }
+  function explainFB(i, z) {
+    const av = avail(), { n, m, fb } = M, a = za(z), b = zb(z), A = a + 1, B = b + 1, e = M.E[i][z], I = i + 1;
+    const head = `<b>SNP ${I}, state ${stTxt(z)}</b> (genotype ${gTxt(i)}, e = ${fv(e)}):`;
+    if (i >= av.fw) return `${head} the forward sweep has not reached this SNP yet.`;
+    const parts = [];
+    if (i === 0) parts.push(`α̃(1,(${A},${B})) = e·(1/n²) / s<sub>1</sub> = ${fv(e)}·${fv(1 / (n * n))} / ${fv(fb.s[0])} = <b>${f4(fb.f[0][z])}</b>`);
+    else {
+      const g = fb.f[i - 1], t = mixTerms(g, z);
+      parts.push(`α̃(${I},(${A},${B})) = e·[(1−r)²·α̃(${i},(${A},${B})) + (1−r)(r/n)·(Σ<sub>b′</sub>α̃(${i},(${A},b′)) + Σ<sub>a′</sub>α̃(${i},(a′,${B}))) + (r/n)²·Σα̃(${i},·)] / s<sub>${I}</sub>` +
+        ` = ${fv(e)}·[${fv(t.k0)}·${f4(g[z])} + ${fv(t.k1)}·(${f4(t.R)} + ${f4(t.C)}) + ${fv(t.k2)}·1] / ${fv(fb.s[i])} = <b>${f4(fb.f[i][z])}</b>. ` +
+        `The four terms are: neither copy recombines, only copy b recombines, only copy a recombines, and both recombine`);
+    }
+    if (i >= av.bFrom) {
+      if (i === m - 1) parts.push(`β̃(${m},·) = 1 because no SNP follows`);
+      else {
+        const w = fb.b[i + 1].map((v, y) => v * M.E[i + 1][y]), t = mixTerms(w, z);
+        parts.push(`β̃(${I},(${A},${B})) = Σ<sub>(a′,b′)</sub> t(a′|${A})t(b′|${B})·e<sub>${I + 1}</sub>(a′,b′)·β̃(${I + 1},(a′,b′)) / s<sub>${I + 1}</sub>, the same four-term sum over w = e·β̃: ` +
+          `[${fv(t.k0)}·${fv(w[z])} + ${fv(t.k1)}·(${fv(t.R)} + ${fv(t.C)}) + ${fv(t.k2)}·${fv(t.S)}] / ${fv(fb.s[i + 1])} = ${f4(fb.b[i][z])}`);
+      }
+      const pz = fb.post[i][z];
+      parts.push(`posterior P((${A},${B}) | x) = α̃·β̃ = ${f4(fb.f[i][z])}·${f4(fb.b[i][z])} = <b>${f4(pz)}</b>` +
+        (a !== b ? `; with its mirror (${B},${A}) the unordered pair {${Math.min(A, B)},${Math.max(A, B)}} has ${f4(pz + fb.post[i][b * n + a])}` : '') +
+        (M.path.p[i] === z ? '. Posterior decoding picks this state' : ''));
+    } else parts.push(`the light shade is α̃ = P(state | genotypes 1..${I}); the backward sweep will add the SNPs after ${I}`);
+    return `${head} ${parts.join('. ')}.`;
+  }
+  // Predecessors of state z at SNP i (0-based, i > 0) that tie with the stored Viterbi backpointer.
+  function vitTies(i, z) {
+    const { n, vt } = M, t = trans(n, M.r), y0 = vt.bp[i][z], best = vt.v[i - 1][y0] * t(y0, z), out = [];
+    for (let y = 0; y < n * n; y++) if (y !== y0 && vt.v[i - 1][y] * t(y, z) >= best * (1 - TIE)) out.push(y);
+    return out;
+  }
+  const tieTxt = ties => ties.length ? `; it ties with ${ties.map(stTxt).join(', ')}, so the Viterbi path is not unique, and the predecessor where fewer copies switch is kept` : '';
+  function explainVit(i, z) {
+    const av = avail(), { n, vt } = M, a = za(z), b = zb(z), A = a + 1, B = b + 1, e = M.E[i][z], I = i + 1;
+    const head = `<b>SNP ${I}, state ${stTxt(z)}</b> (genotype ${gTxt(i)}, e = ${fv(e)}):`;
+    if (i >= av.fw) return `${head} the forward sweep has not reached this SNP yet.`;
+    let o;
+    if (i === 0) o = `δ̃(1,(${A},${B})) = e·(1/n²) / c<sub>1</sub> = ${fv(e)}·${fv(1 / (n * n))} / ${fv(vt.c[0])} = <b>${f4(vt.v[0][z])}</b>, where c<sub>1</sub> rescales the best state to 1`;
+    else {
+      const y = vt.bp[i][z], t = trans(n, M.r)(y, z), sw = nsw(n, y, z);
+      o = `δ̃(${I},(${A},${B})) = e·max<sub>(a′,b′)</sub> δ̃(${i},(a′,b′))·t(${A}|a′)t(${B}|b′) / c<sub>${I}</sub>. The best predecessor is ${stTxt(y)} with δ̃ = ${f4(vt.v[i - 1][y])} and ` +
+        `t·t = ${fv(t)} (${['no copy switches', 'one copy switches', 'both copies switch'][sw]})${tieTxt(vitTies(i, z))}. So δ̃ = ${fv(e)}·${fv(vt.v[i - 1][y] * t)} / ${fv(vt.c[i])} = <b>${fv(vt.v[i][z])}</b>. ` +
+        `The forward value sums all ${n * n} such terms; Viterbi keeps only the largest`;
+    }
+    if (i >= av.bFrom && M.path.v[i] === z) o += '. This state is on the Viterbi path';
+    return `${head} ${o}.`;
+  }
+  const alTxt = (c, i) => c.flag === 'err' ? `<span class="errc">${c.ch.toLowerCase()}</span> (hap${c.src + 1} has ${M.H[c.src][i]})` : c.flag === 'imp' ? `<b>${c.ch}</b> (imputed from hap${c.src + 1})` : `${c.ch} (hap${c.src + 1})`;
+  function explainSNP(i) {
+    const av = avail(), { H, fb } = M;
+    let o = `<b>SNP ${i + 1}</b>: genotype ${gTxt(i)}; the panel has ${H.map((h, j) => `hap${j + 1} ${h[i]}`).join(', ')}.`;
+    if (i >= av.fw) return o + ' The forward sweep has not reached this SNP yet.';
+    if (i < av.bFrom) return o + ` Given genotypes 1..${i + 1} only, the most probable unordered pairs are ${pairsTxt(fb.f[i], 3)}. The SNP is decoded in the backward sweep.`;
+    for (const d of ['v', 'p']) {
+      const z = M.path[d][i], c = M.phased[d];
+      o += ` ${d === 'v' ? 'Viterbi' : 'Posterior decoding'}: ${stTxt(z)}, so copy a gets ${alTxt(c.A[i], i)} and copy b gets ${alTxt(c.B[i], i)}.`;
+    }
+    o += ` Most probable unordered pairs: ${pairsTxt(fb.post[i], 3)}.`;
+    if (!M.G[i]) o += ` <b>Imputation:</b> summing the posterior over states by the alleles they copy gives P(genotype | x) = ` +
+      Object.entries(genoPost(fb.post[i], H, i)).sort((x, y) => y[1] - x[1]).map(([g, v]) => `${g} ${f3(v)}`).join(', ') + '.';
+    return o;
+  }
+
+  function showExplainDefault() {
+    if (M.error) { $('explain').innerHTML = `<span class="errc">${esc(M.error)}</span>`; return; }
+    const { n, m, fb, vt } = M, N = n * n;
+    if (k === 0) {
+      $('explain').innerHTML = `<b>Start.</b> Each of the ${N} hidden states (a, b) says which panel haplotypes copies a and b are copying. ` +
+        `The top row of grids is the emission at every SNP: dark cells are the pairs whose alleles agree with the genotype. ` +
+        `The forward sweep then goes left to right, computing the forward values α̃ (a sum over predecessors) and the Viterbi values δ̃ (a max). ` +
+        `The backward sweep goes right to left, computing β̃ and the posterior and tracing both decoded paths back. Press → to start, or hover a cell or a panel column.`;
+      return;
+    }
+    let o;
+    if (k <= m) {
+      const i = k - 1, I = k, bz = bestZ(vt.v[i]);
+      o = `<b>Forward sweep, SNP ${I}</b> (genotype ${gTxt(i)}): ` +
+        (i === 0 ? `the states start uniform (1/${N}) and are weighted by the emission. `
+          : `α̃(${I},·) multiplies the emission by the sum over all ${N} predecessor states, which reduces to four terms because the two copies recombine independently (hover a cell). `) +
+        `Rescaling by s<sub>${I}</sub> = ${fv(fb.s[i])} makes the column sum to 1, and log P(x<sub>1..${I}</sub>) = Σ log s = ${f2(fb.logP[i])}. ` +
+        `Given genotypes 1..${I}, the most probable unordered pairs are ${pairsTxt(fb.f[i], 3)}. ` +
+        `Viterbi δ̃ takes the max instead of the sum: the best state is ${stTxt(bz)}` +
+        (za(bz) !== zb(bz) ? ` (tied with its mirror)` : '') + (i > 0 ? `, reached from ${stTxt(vt.bp[i][bz])}` : '') + '.';
+    } else {
+      const j = 2 * m - k, J = j + 1, pz = M.path.p[j], vz = M.path.v[j], pu = topPairs(fb.post[j]).find(([a, b]) => a === Math.min(za(pz), zb(pz)) && b === Math.max(za(pz), zb(pz)))[2];
+      o = `<b>Backward sweep, SNP ${J}</b>: ` + (j === m - 1 ? `β̃(${m},·) = 1, so the posterior equals α̃ at the last SNP. `
+        : `β̃(${J},·) comes from SNP ${J + 1} through the same four-term sum, divided by s<sub>${J + 1}</sub>; the posterior α̃β̃ now uses the whole genotype. `) +
+        `Posterior decoding picks ${stTxt(pz)} with P = ${f3(fb.post[j][pz])} (${za(pz) === zb(pz) ? 'a single state' : `{${Math.min(za(pz), zb(pz)) + 1},${Math.max(za(pz), zb(pz)) + 1}} ${f3(pu)} with its mirror, which ties; the orientation ` + (j === m - 1 ? 'with the lower number first is taken' : `that agrees with SNP ${J + 1} is taken`)}). ` +
+        `Viterbi traceback: ${stTxt(vz)} ` + (j === m - 1 ? 'is the best state at the last SNP.' : `is the predecessor stored with ${stTxt(M.path.v[j + 1])} at SNP ${J + 1}${tieTxt(vitTies(j + 1, M.path.v[j + 1]))}.`);
+      const c = M.phased[show], A = c.A[j], B = c.B[j];
+      o += ` The drawn ${show === 'v' ? 'Viterbi' : 'posterior'} path phases copy a = ${alTxt(A, j)}, copy b = ${alTxt(B, j)}.`;
+      if (!M.G[j]) o += ` The genotype is missing here, so both alleles are imputed from the copied haplotypes.`;
+      if (k === 2 * m) {
+        const diff = M.path.v.map((z, i) => z !== M.path.p[i] ? i + 1 : 0).filter(x => x);
+        o += ` <b>Done.</b> log P(x) = ${f2(fb.logP[m - 1])}. Viterbi maximises the probability of the whole path, log P(x, path) = ${f2(M.logPath.v)}; ` +
+          `posterior decoding maximises each SNP separately, log P(x, path) = ${f2(M.logPath.p)}. ` +
+          (diff.length ? `The two paths differ at SNP ${diff.join(', ')}.` : 'Here the two paths agree.');
+      }
+    }
+    $('explain').innerHTML = o;
+  }
+  function renderStatus() {
+    const { n, m, fb } = M, av = avail();
+    let o = `Step <b>${k}</b> / ${2 * m} · ${n} haplotypes, ${m} SNPs, ${n * n} states · ` +
+      (k === 0 ? 'not started' : k <= m ? `forward sweep at SNP ${k}` : `backward sweep at SNP ${av.cur + 1}`);
+    if (k >= m) o += ` · log P(x) = ${f2(fb.logP[m - 1])}`;
+    $('status').innerHTML = o;
+  }
+
+  function render() {
+    renderModel();
+    $('derr').textContent = M.error || '';
+    $('show').value = show;
+    if (M.error) {
+      for (const id of ['psvg', 'paths', 'grids', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    renderPanel(); renderPaths(); renderGrids(); renderStatus(); showExplainDefault();
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = $('btnRun').disabled = k === K();
+  }
+
+  // ---------- events ----------
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnRun').addEventListener('click', () => setK(K()));
+  $('btnReset').addEventListener('click', () => setK(0));
+  $('btnSlide').addEventListener('click', () => load(SLIDE_G));
+  $('btnImp').addEventListener('click', () => load(IMPUTE_G));
+  $('show').addEventListener('change', () => setShow($('show').value));
+  for (const id of ['rr', 'eps']) $(id).addEventListener('change', rebuild);
+  for (const id of ['panel', 'geno']) $(id).addEventListener('input', rebuild);
+  $('paths').addEventListener('click', e => { const d = e.target.closest('.pth'); if (d) setShow(d.dataset.d); });
+  $('psvg').addEventListener('mouseover', e => { const g = e.target.closest('g.col'); if (g && !M.error) $('explain').innerHTML = explainSNP(+g.dataset.i); });
+  $('psvg').addEventListener('mouseout', e => { if (e.target.closest('g.col')) showExplainDefault(); });
+  $('grids').addEventListener('mouseover', e => {
+    const c = e.target.closest('.gc'); if (!c || M.error) return;
+    const i = +c.dataset.i, z = +c.dataset.z;
+    $('explain').innerHTML = [explainEmit, explainFB, explainVit][+c.dataset.bd](i, z);
+  });
+  $('grids').addEventListener('mouseout', e => { if (e.target.closest('.gc')) showExplainDefault(); });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(K()); break;
+      case 'r': case 'R': setK(0); break;
+      case 'v': case 'V': setShow(show === 'v' ? 'p' : 'v'); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the slides' example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  load(SLIDE_G);
+})();
+</script>
+</body>
+</html>

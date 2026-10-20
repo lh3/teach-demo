@@ -28,7 +28,7 @@
 <body>
 <h1>Interactive demos of sequence algorithms</h1>
 <p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise and multiple alignment, read mapping,
-genome assembly, RNA-seq quantification and hidden Markov models. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
+genome assembly, RNA-seq quantification, hidden Markov models and haplotype phasing. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
 buttons or the arrow keys and watch every intermediate state.</p>
 
 <ol>
@@ -71,6 +71,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <span class="num">8</span><span class="name">Progressive multiple sequence alignment</span>
     <div class="desc">Align every pair of sequences to get distances, build a UPGMA guide tree, then align up the tree: sequence to sequence, sequence to profile and profile to profile. Each step shows its DP matrix, with stacked profile columns as headers and a hover breakdown of the sum-of-pairs column scores.</div>
     <div class="tags">pairwise distances · UPGMA · profile alignment · sum-of-pairs</div>
+  </a></li>
+  <li><a href="li-stephens.html">
+    <span class="num">9</span><span class="name">Phasing and imputation with the Li–Stephens HMM</span>
+    <div class="desc">Explain an unphased diploid genotype as two mosaics of reference haplotypes, with a pair of panel haplotypes as the hidden state. Step the forward and Viterbi recursions left to right and the backward pass right to left, then compare the Viterbi path with posterior decoding, see which allele goes to which copy, and fill in missing genotypes from the copied haplotypes.</div>
+    <div class="tags">diploid HMM · n² states · Viterbi · posterior decoding · imputation</div>
   </a></li>
 </ol>
 

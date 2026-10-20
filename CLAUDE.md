@@ -48,6 +48,16 @@ working when opened as a local `file://` URL.
   profile's rows, the child holding the lowest-numbered sequence goes on the columns, and the
   traceback prefers diag, up, left. Examples: the slides' 4 sequences (seq–seq, seq–seq,
   profile–profile) and their first 3 (seq–seq, then seq–profile).
+- `li-stephens.html`: diploid Li–Stephens HMM for phasing and imputation (examples from `li-stephens.pdf`, hap3 as
+  on slides 2–5). The state is an ordered pair z = a·n + b of panel haplotypes. It uses the standard model, not the
+  slides' formulas: each copy keeps its template with probability 1−r or jumps to a uniform panel haplotype, so
+  t(a′|a) = (1−r)[a′=a] + r/n, and the pair transition is the product. The emission is a per-allele copying error ε,
+  summed over both orderings for an unordered heterozygote; a missing genotype (`?`/N) emits 1. Steps 1..m are the
+  forward sweep: scaled α̃ via the O(n²) four-term `mix`, and Viterbi δ̃ rescaled so each column's max is 1. Steps
+  m+1..2m are the backward sweep: β̃, the posterior, the Viterbi traceback, and posterior decoding, where ties with
+  the mirror state (b,a) go to the larger transition into the next chosen state. Grids per SNP show e,
+  α̃→posterior and δ̃. The panel shows the selected path as red (a) and blue (b) lines with the phased output
+  (lowercase red = allele differs from its template, bold = imputed).
 
 ## Developing and checking
 
@@ -72,7 +82,8 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
 Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
 `runSearch`, `buildModel`, the ovasm helpers, `simulate`, `parseCounts`, `emSteps` in
 `rna-seq-em.html`, `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`, and `parseSeqs`,
-`alignProfiles`, `upgma`, `buildModel` in `msa.html`) free of DOM access
+`alignProfiles`, `upgma`, `buildModel` in `msa.html`, and `parsePanel`, `parseGeno`, `emissions`, `forwardBackward`,
+`viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
@@ -109,5 +120,5 @@ All demos follow the same pattern; keep new pages consistent with it.
 
 GitHub Pages serves the repo root, so new demos go at the root, are linked from
 `index.html` with relative paths, and must not rely on a server. Slide PDFs the instructor
-drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`) and the reference scripts
+drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`, `li-stephens.pdf`) and the reference scripts
 `rna-seq-em.py` and `hmm-coin-em.py` are reference material and are not committed.
