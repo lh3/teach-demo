@@ -27,7 +27,7 @@
 </head>
 <body>
 <h1>Interactive demos of sequence algorithms</h1>
-<p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise alignment, read mapping,
+<p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise and multiple alignment, read mapping,
 genome assembly, RNA-seq quantification and hidden Markov models. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
 buttons or the arrow keys and watch every intermediate state.</p>
 
@@ -66,6 +66,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <span class="num">7</span><span class="name">Hidden Markov model: fair and cheat coins</span>
     <div class="desc">Simulate which coin Jack throws and what he reports, then step the forward pass left to right and the backward pass right to left, rescaling at every position so nothing underflows, and watch the posterior of the cheat coin fill in against the hidden truth. Tick “estimate this parameter” to treat the cheat coin’s head probability as unknown and step through the EM iterations that recover it from the posteriors.</div>
     <div class="tags">forward–backward · rescaling · posterior decoding · EM</div>
+  </a></li>
+  <li><a href="msa.html">
+    <span class="num">8</span><span class="name">Progressive multiple sequence alignment</span>
+    <div class="desc">Align every pair of sequences to get distances, build a UPGMA guide tree, then align up the tree: sequence to sequence, sequence to profile and profile to profile. Each step shows its DP matrix, with stacked profile columns as headers and a hover breakdown of the sum-of-pairs column scores.</div>
+    <div class="tags">pairwise distances · UPGMA · profile alignment · sum-of-pairs</div>
   </a></li>
 </ol>
 

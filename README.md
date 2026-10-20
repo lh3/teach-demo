@@ -15,6 +15,7 @@ action at a time.
 | `ovasm.html` | Genome assembly with an overlap graph: overlap, reduce, compact |
 | `rna-seq-em.html` | RNA-seq quantification: resolving multi-mapped reads with EM |
 | `hmm.html` | Hidden Markov model: forward–backward with rescaling, posterior decoding, EM |
+| `msa.html` | Progressive multiple sequence alignment: distances, UPGMA guide tree, profile alignment |
 
 `index.html` only links to the pages above.
 

@@ -40,6 +40,14 @@ working when opened as a local `file://` URL.
   posterior α̃β̃ replaces it. Ticked, e(0|C) = θ is unknown and each step is one EM iteration
   (posterior sums n₀, n₁ → new θ) with convergence charts. Only the rescaled recurrences are
   implemented (no unscaled α anywhere).
+- `msa.html`: progressive MSA with linear gap scores (match/mismatch/gap inputs, default +1/−1/−1).
+  Stage 1 aligns every pair (one step each) and sets d = (mismatches + gap columns) / alignment
+  length; stage 2 is UPGMA (one step per merge, cluster tables before/after); stage 3a, 3b, … aligns
+  the two children of each tree node in merge order. Sequences and profiles go through the same
+  `alignProfiles`: σ of two columns is the sum over all symbol pairs (gap/gap = 0), headers stack the
+  profile's rows, the child holding the lowest-numbered sequence goes on the columns, and the
+  traceback prefers diag, up, left. Examples: the slides' 4 sequences (seq–seq, seq–seq,
+  profile–profile) and their first 3 (seq–seq, then seq–profile).
 
 ## Developing and checking
 
@@ -54,7 +62,8 @@ const src=require("fs").readFileSync("ond.html","utf8");
 eval(src.match(/function computeDP[\s\S]*?\n  }\n/)[0]);
 console.log(computeDP("GATTACA","GCATGCU")[7][7]);'
 
-# Render a given step headlessly (append a setK/setS call before the closing "})();"):
+# Render a given step headlessly (append a setK/setS call before the closing "})();"; the
+# injected JS must not contain "$(", which Perl interpolates, so use document.getElementById):
 perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html > /tmp/t.html
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
   --hide-scrollbars --window-size=1000,820 --screenshot=/tmp/t.png file:///tmp/t.html
@@ -62,7 +71,8 @@ perl -0pe "s/  rebuild\(\);\n\}\)\(\);/  rebuild(); setK(8);\n})();/" ond.html >
 
 Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex`, `calcD`,
 `runSearch`, `buildModel`, the ovasm helpers, `simulate`, `parseCounts`, `emSteps` in
-`rna-seq-em.html`, and `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`) free of DOM access
+`rna-seq-em.html`, `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`, and `parseSeqs`,
+`alignProfiles`, `upgma`, `buildModel` in `msa.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture

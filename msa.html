@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Progressive Multiple Sequence Alignment</title>
+<style>
+  :root {
+    --diag: #7b3fa0;
+    --up: #0b7a75;
+    --left: #d0731a;
+    --win: #fff3c4;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --node: #1e6fd9; --nodebg: #d6e6fb;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .setup { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: flex-start; }
+  .setup .lab { font-size: .9rem; color: #444; margin-bottom: 3px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  textarea {
+    font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; letter-spacing: .08em;
+    text-transform: uppercase; padding: 4px 6px; width: 24ch; height: 8.2em; resize: vertical; display: block;
+  }
+  input[type=number] { font: inherit; width: 4em; padding: 3px 4px; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .muted { color: #888; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 0; }
+  .err { color: #d62828; font-weight: 600; font-size: .9rem; margin-top: 4px; }
+  .empty { color: #888; font-size: .9rem; }
+  [hidden] { display: none !important; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 10px; font-size: .9rem; }
+  .tabs button { padding: 3px 12px; font-size: .9rem; border-radius: 14px; border: 1px solid #bbb; background: #f6f6f6; }
+  .tabs button.on { background: var(--node); border-color: var(--node); color: #fff; font-weight: 600; }
+  .tabs button.past { background: #e4eefb; border-color: var(--node); color: var(--node); }
+  .tabs .sep { color: #aaa; }
+
+  .two { display: grid; grid-template-columns: auto minmax(300px, 1fr); gap: 0 40px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+
+  /* tables */
+  table { border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 3px 9px; border-bottom: 1px solid #e3e3e3; text-align: right; white-space: nowrap; }
+  th { color: #555; font-weight: 600; }
+  thead th { border-bottom: 1.5px solid #bbb; }
+  tbody th { text-align: left; }
+  td.dg { color: #bbb; text-align: center; }
+  .dm td.hi { color: #999; }
+  .dm td[data-k] { cursor: pointer; }
+  .dm td[data-k]:hover { background: #f3f7fd; }
+  td.cur, td.min { background: var(--curbg); outline: 2px solid var(--cur); outline-offset: -2px; font-weight: 700; }
+  td.rel { background: #f7f1da; }
+  td.new { background: #e4eefb; }
+  tr.new th { color: var(--node); }
+  .upg { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+  .upg .arr { font-size: 1.6rem; color: #888; }
+  .cap { font-size: .85rem; color: #555; margin-bottom: 4px; }
+
+  /* guide tree */
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .br { fill: none; stroke: #555; stroke-width: 1.6; }
+  .br.cur { stroke: var(--cur); stroke-width: 3; }
+  .nd { cursor: pointer; }
+  .nd circle { fill: #fff; stroke: var(--node); stroke-width: 1.5; }
+  .nd.done circle { fill: var(--nodebg); }
+  .nd.cur circle { fill: var(--curbg); stroke: var(--cur); stroke-width: 2.5; }
+  .nd text { font: 700 10px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: var(--node); pointer-events: none; }
+  .nd.cur text { fill: var(--curtx); }
+  .nh { font: 10px system-ui, sans-serif; fill: #777; text-anchor: end; }
+  .lf { dominant-baseline: central; }
+  .lf.nm { font: 600 13px system-ui, sans-serif; fill: #222; }
+  .lf.sq { font: 12px ui-monospace, Menlo, Consolas, monospace; fill: #888; }
+  .lf.in { fill: var(--curtx); }
+  .lfd { fill: #555; }
+
+  /* DP matrix */
+  #main { overflow-x: auto; }
+  #main svg { width: 100%; height: auto; }
+  .hdr rect { fill: #e9e9ee; stroke: #bbb; stroke-width: 1; }
+  .hdr text { text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: #222; }
+  .hdr text.ch { font: 700 15px ui-monospace, Menlo, Consolas, monospace; }
+  .hdr text.ch.gp { fill: #aaa; font-weight: 400; }
+  .hdr text.idx { font: 10px system-ui, sans-serif; fill: #777; }
+  .corner rect { fill: #f7f7f9; stroke: #bbb; }
+  .corner text { font: 600 11px system-ui, sans-serif; fill: #555; dominant-baseline: central; pointer-events: none; }
+  .corner text.nb { text-anchor: middle; }
+
+  .cell rect { fill: #fff; stroke: #bbb; stroke-width: 1; }
+  .cell.match rect { fill: #dff0df; }
+  .cell:hover rect { stroke: #333; stroke-width: 1.5; }
+  .cell.pred rect { stroke: #e6a800; stroke-width: 2.5; }
+  .cell.trace rect { fill: var(--win); }
+  .cell.trace.match rect { fill: #f0e9b0; }
+  .val { font: 600 15px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #111; pointer-events: none; }
+  .arrow { fill: none; stroke-width: 2; pointer-events: none; opacity: .3; }
+  .arrow.diag { stroke: var(--diag); } .arrow.up { stroke: var(--up); } .arrow.left { stroke: var(--left); }
+  .arrow.trace { stroke-width: 3.6; opacity: 1; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .9rem; margin: 8px 0 4px; align-items: center; }
+  .legend .sw { display: inline-block; width: 26px; height: 3px; vertical-align: middle; margin-right: 6px; position: relative; }
+  .legend .sw::after { content: ""; position: absolute; right: -2px; top: -3px; border: 4.5px solid transparent; border-left: 7px solid currentColor; }
+  .legend .box { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; border: 1px solid #bbb; }
+  .l-diag { color: var(--diag); } .l-up { color: var(--up); } .l-left { color: var(--left); }
+
+  /* alignments */
+  #align { margin-top: 10px; }
+  .alab { font-size: .9rem; color: #555; margin: 4px 0; }
+  #align pre { margin: 0; font: 600 16px/1.35 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .15em; }
+  .blk { display: inline-block; font: 600 16px/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .15em; white-space: pre; }
+  .blk .r.sep { border-top: 1px dashed #aaa; }
+  .blk .nm { display: inline-block; width: 3.4em; letter-spacing: 0; color: #555; font-family: system-ui, sans-serif; font-size: .85em; }
+  .gap { color: #999; } .mis { color: #d62828; } .bar { color: #1e6fd9; }
+  .ngA { color: var(--up); background: #d9efed; } .ngB { color: var(--left); background: #fbe6d2; }
+  .cons { color: #1e6fd9; }
+
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  #explain .f { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  #explain i { font-family: system-ui, sans-serif; font-style: normal; color: #666; font-size: .85em; }
+  .t-diag { color: var(--diag); } .t-up { color: var(--up); } .t-left { color: var(--left); }
+  .win { font-weight: 700; background: var(--win); padding: 0 3px; border-radius: 3px; }
+  .tie { font-family: system-ui, sans-serif; font-size: .85em; color: #a05a00; }
+</style>
+</head>
+<body>
+<h1>Progressive multiple sequence alignment</h1>
+
+<div class="setup">
+  <div>
+    <div class="lab">Sequences, one per line (S1, S2, … from the top)</div>
+    <textarea id="seqs" spellcheck="false" autocomplete="off"></textarea>
+    <div id="perr" class="err"></div>
+  </div>
+  <div>
+    <div class="controls">
+      <label>Example <select id="selEx">
+        <option value="slides">Slides: 4 sequences</option>
+        <option value="three">First 3 sequences (sequence–profile step)</option>
+      </select></label>
+    </div>
+    <div class="controls">
+      <label>Match <input type="number" id="scM" value="1" step="1" autocomplete="off"></label>
+      <label>Mismatch <input type="number" id="scX" value="-1" step="1" autocomplete="off"></label>
+      <label>Gap (per position) <input type="number" id="scG" value="-1" step="1" autocomplete="off"></label>
+    </div>
+    <div class="controls">
+      <button id="btnBack" title="Previous step (←)">◀ Back</button>
+      <button id="btnStep" title="Next step (→)">Step ▶</button>
+      <button id="btnStage" title="Jump to the end of the current stage (n)">Next stage ▶▶</button>
+      <button id="btnRun" title="Run to the end (f)">Run all</button>
+      <button id="btnReset" title="Back to the start (r)">Reset</button>
+    </div>
+  </div>
+</div>
+
+<p class="hint">
+  <b>1 Pairwise distances:</b> align every pair of sequences globally (linear gap: each gap position costs the same) and
+  turn the alignment into a distance d = (mismatches + gap columns) / alignment length.
+  <b>2 Guide tree:</b> UPGMA repeatedly joins the two closest clusters; the distance from the new cluster is the
+  average over all pairs of sequences across the clusters.
+  <b>3 Progressive alignment:</b> visit the tree nodes in the order they were created and align the two children at
+  each node. A child is a sequence or a <em>profile</em>, an alignment from an earlier step that is kept fixed
+  (“once a gap, always a gap”); two columns score the sum over all residue pairs between them, with gap against gap = 0.
+  Hover a matrix cell to see how it is computed; click a tab, a distance or a tree node to jump.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>n</kbd> next stage, <kbd>f</kbd> run all, <kbd>r</kbd> reset.
+</p>
+
+<div class="tabs" id="tabs"></div>
+
+<div class="two">
+  <div>
+    <h2>Pairwise scores (upper) and distances (lower)</h2>
+    <div id="dist"></div>
+  </div>
+  <div>
+    <h2>UPGMA guide tree</h2>
+    <div id="tree"></div>
+    <div id="treenote" class="note"></div>
+  </div>
+</div>
+
+<h2 id="mainTitle"></h2>
+<div id="main"></div>
+<div class="legend" id="legend">
+  <span class="l-diag"><span class="sw" style="background:currentColor"></span>diagonal: column j of A with position i of B (+σ)</span>
+  <span class="l-up"><span class="sw" style="background:currentColor"></span>from above: position i of B against a gap</span>
+  <span class="l-left"><span class="sw" style="background:currentColor"></span>from the left: column j of A against a gap</span>
+  <span><span class="box" style="background:var(--win)"></span>traceback (ties: diagonal, then up, then left); faded arrows are other ties</span>
+  <span><span class="box" style="background:#dff0df"></span>σ &gt; 0</span>
+</div>
+<div id="align"></div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const MAXN = 6, MAXL = 20, GAP = '-';
+  const CELL = 44, LH = 17, LW = 20;
+  const DIRS = ['diag', 'up', 'left'];
+  const COLORS = { diag: '#7b3fa0', up: '#0b7a75', left: '#d0731a' };
+  const EXAMPLES = {   // the slides' sequences; the first three give a sequence-profile step
+    slides: 'CAATCTAGTAC\nCAATCGAGATAGTAC\nCAATAGCTAGTAC\nCATCGAGATAGAAC',
+    three: 'CAATCTAGTAC\nCAATCGAGATAGTAC\nCAATAGCTAGTAC',
+  };
+  const DEFAULTS = { scM: 1, scX: -1, scG: -1 };
+  const f3 = x => x.toFixed(3);
+  const num = v => v < 0 ? '−' + (-v) : String(v);
+  const plus = v => v < 0 ? `− ${-v}` : `+ ${v}`;
+  const signed = v => v > 0 ? '+' + v : num(v);
+  const seqName = t => 'S' + (t + 1);
+  const tag = k => '3' + 'abcdefghij'[k];
+
+  let SC = null, Mo = null, s = 0, curAl = null, cellEls = [];
+
+  // ---------- pure model ----------
+  function parseSeqs(text) {
+    const seqs = text.split('\n').map(l => l.replace(/\s+/g, '').toUpperCase()).filter(l => l);
+    if (seqs.length < 2) return { error: 'Enter at least two sequences, one per line.' };
+    if (seqs.length > MAXN) return { error: `At most ${MAXN} sequences.` };
+    for (let t = 0; t < seqs.length; t++) {
+      if (/[^A-Z]/.test(seqs[t])) return { error: `${seqName(t)} contains a character that is not a letter.` };
+      if (seqs[t].length > MAXL) return { error: `${seqName(t)} is longer than ${MAXL} letters.` };
+    }
+    return { seqs };
+  }
+
+  // Score of one pair of symbols; a gap against a gap scores 0 (sum-of-pairs convention).
+  function pairScore(x, y, sc) {
+    if (x === GAP || y === GAP) return x === y ? 0 : sc.gap;
+    return x === y ? sc.match : sc.mis;
+  }
+  // σ of two columns: the sum over every symbol of one column against every symbol of the other.
+  function colScore(ca, cb, sc) {
+    let t = 0;
+    for (const x of ca) for (const y of cb) t += pairScore(x, y, sc);
+    return t;
+  }
+
+  // Global alignment of profile A (columns, index j) and profile B (rows, index i), each an array of
+  // equal-length rows; a sequence is a one-row profile. S[i][j] is the best score of A[1..j] against
+  // B[1..i], P[i][j] lists every predecessor attaining it, and the traceback prefers diag, up, left.
+  // The merged rows are A's rows then B's rows.
+  function alignProfiles(PA, PB, sc) {
+    const n = PA[0].length, m = PB[0].length, nA = PA.length, nB = PB.length;
+    const colA = [], colB = [];
+    for (let j = 0; j < n; j++) colA.push(PA.map(r => r[j]));
+    for (let i = 0; i < m; i++) colB.push(PB.map(r => r[i]));
+    const gapsA = PA.map(() => GAP), gapsB = PB.map(() => GAP);
+    const gA = colA.map(c => colScore(c, gapsB, sc));   // column j of A against a gap column
+    const gB = colB.map(c => colScore(gapsA, c, sc));   // position i of B against a gap column
+    const sig = colB.map(cb => colA.map(ca => colScore(ca, cb, sc)));   // sig[i-1][j-1]
+    const S = [], P = [];
+    for (let i = 0; i <= m; i++) {
+      S.push(new Array(n + 1).fill(0));
+      P.push(new Array(n + 1).fill(null));
+      for (let j = 0; j <= n; j++) {
+        if (i === 0 && j === 0) { P[i][j] = []; continue; }
+        const cand = [];
+        if (i > 0 && j > 0) cand.push({ dir: 'diag', val: S[i - 1][j - 1] + sig[i - 1][j - 1] });
+        if (i > 0) cand.push({ dir: 'up', val: S[i - 1][j] + gB[i - 1] });
+        if (j > 0) cand.push({ dir: 'left', val: S[i][j - 1] + gA[j - 1] });
+        const best = Math.max(...cand.map(c => c.val));
+        S[i][j] = best;
+        P[i][j] = cand.filter(c => c.val === best).map(c => c.dir);
+      }
+    }
+    const ops = [];
+    for (let i = m, j = n; i > 0 || j > 0;) {
+      const d = P[i][j].includes('diag') ? 'diag' : P[i][j].includes('up') ? 'up' : 'left';
+      ops.push({ d, i, j });
+      if (d !== 'left') i--;
+      if (d !== 'up') j--;
+    }
+    ops.reverse();
+    const rows = [...PA, ...PB].map(() => []);
+    for (const op of ops) {
+      PA.forEach((r, t) => rows[t].push(op.d === 'up' ? GAP : r[op.j - 1]));
+      PB.forEach((r, t) => rows[nA + t].push(op.d === 'left' ? GAP : r[op.i - 1]));
+    }
+    return { n, m, nA, nB, colA, colB, gA, gB, sig, S, P, ops, rows: rows.map(r => r.join('')), score: S[m][n] };
+  }
+
+  function pairStats(ra, rb) {
+    let M = 0, X = 0, G = 0;
+    for (let c = 0; c < ra.length; c++) {
+      if (ra[c] === GAP || rb[c] === GAP) G++;
+      else if (ra[c] === rb[c]) M++;
+      else X++;
+    }
+    return { M, X, G, L: ra.length, d: (X + G) / ra.length };
+  }
+
+  // Sum-of-pairs score of an alignment: every pair of rows, every column, gap against gap = 0.
+  function spScore(rows, sc) {
+    let t = 0;
+    for (let a = 0; a < rows.length; a++) for (let b = a + 1; b < rows.length; b++)
+      for (let c = 0; c < rows[a].length; c++) t += pairScore(rows[a][c], rows[b][c], sc);
+    return t;
+  }
+
+  // UPGMA on the distance matrix D. Nodes 0..n-1 are the sequences and merge k creates node n+k at
+  // height d/2. The cluster table keeps one slot per cluster: the new cluster takes the lower slot of
+  // the pair, so slots stay ordered by their lowest sequence index. Ties go to the first pair in
+  // row-major order. Each merge records the table before and after it.
+  function upgma(D) {
+    const n = D.length, nodes = [], merges = [];
+    for (let t = 0; t < n; t++) nodes.push({ id: t, members: [t], size: 1, height: 0 });
+    let ids = nodes.map(nd => nd.id), mat = D.map(r => r.slice());
+    while (ids.length > 1) {
+      let ia = 0, ib = 1;
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++)
+        if (mat[a][b] < mat[ia][ib] - 1e-12) { ia = a; ib = b; }
+      const A = nodes[ids[ia]], B = nodes[ids[ib]], d = mat[ia][ib];
+      const node = { id: nodes.length, left: A.id, right: B.id, members: [...A.members, ...B.members], size: A.size + B.size, height: d / 2, d };
+      nodes.push(node);
+      const row = ids.map((_, c) => (A.size * mat[ia][c] + B.size * mat[ib][c]) / node.size);
+      const keep = ids.map((_, c) => c).filter(c => c !== ib);
+      const nids = keep.map(c => c === ia ? node.id : ids[c]);
+      const nmat = keep.map(r => keep.map(c => r === c ? 0 : r === ia ? row[c] : c === ia ? row[r] : mat[r][c]));
+      merges.push({ a: A.id, b: B.id, ia, ib, d, node: node.id, row, before: { ids, mat }, after: { ids: nids, mat: nmat } });
+      ids = nids; mat = nmat;
+    }
+    return { nodes, merges };
+  }
+
+  // Everything the page shows: all pairwise alignments, the UPGMA merges and one alignment per merge,
+  // in merge order (children are always aligned before their parent). The child holding the
+  // lowest-numbered sequence goes on the columns.
+  function buildModel(seqs, sc) {
+    const n = seqs.length, pairs = [], D = seqs.map(() => new Array(n).fill(0)), pk = seqs.map(() => []);
+    for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+      const al = alignProfiles([seqs[a]], [seqs[b]], sc);
+      pk[a][b] = pk[b][a] = pairs.length;
+      pairs.push({ a, b, al, ...pairStats(al.rows[0], al.rows[1]) });
+      D[a][b] = D[b][a] = pairs[pairs.length - 1].d;
+    }
+    const { nodes, merges } = upgma(D);
+    const prof = seqs.map((q, t) => ({ rows: [q], members: [t], sp: 0 }));
+    const aligns = merges.map(mg => {
+      const A = prof[mg.a], B = prof[mg.b], al = alignProfiles(A.rows, B.rows, sc);
+      const res = { a: mg.a, b: mg.b, A, B, al, members: [...A.members, ...B.members], sp: spScore(al.rows, sc) };
+      prof[mg.node] = { rows: al.rows, members: res.members, sp: res.sp };
+      return res;
+    });
+    const steps = [];
+    pairs.forEach((_, k) => steps.push({ stage: 'pair', k }));
+    merges.forEach((_, k) => steps.push({ stage: 'upgma', k }));
+    merges.forEach((_, k) => steps.push({ stage: 'align', k }));
+    return { n, seqs, pairs, pk, D, nodes, merges, aligns, steps };
+  }
+
+  // ---------- state ----------
+  function readScores() {
+    const rd = id => { let v = Math.round(+$(id).value); if (!isFinite(v) || $(id).value === '') v = DEFAULTS[id]; $(id).value = v; return v; };
+    SC = { match: rd('scM'), mis: rd('scX'), gap: rd('scG') };
+  }
+  function rebuild() {
+    readScores();
+    const p = parseSeqs($('seqs').value);
+    Mo = p.error ? p : buildModel(p.seqs, SC);
+    s = 0;
+    render();
+  }
+  const S = () => Mo.error ? 0 : Mo.steps.length;
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); render(); };
+  const cname = id => id < Mo.n ? seqName(id) : '{' + Mo.nodes[id].members.slice().sort((x, y) => x - y).map(seqName).join(',') + '}';
+  const kind = ag => ag.A.rows.length === 1 && ag.B.rows.length === 1 ? 'sequence–sequence' : ag.A.rows.length === 1 || ag.B.rows.length === 1 ? 'sequence–profile' : 'profile–profile';
+  const cap = t => t[0].toUpperCase() + t.slice(1);
+
+  function view() {   // what is visible at step s
+    const P = Mo.pairs.length, M = Mo.merges.length, cl = v => Math.max(0, Math.min(M, v));
+    return { cur: s > 0 ? Mo.steps[s - 1] : null, pairsDone: Math.min(s, P), mergesDone: cl(s - P), alignsDone: cl(s - P - M) };
+  }
+  function groups() {   // the tabs: stage 1, stage 2, then one tab per alignment
+    const P = Mo.pairs.length, M = Mo.merges.length;
+    const g = [{ label: '1 Pairwise distances', start: 1, end: P }, { label: '2 UPGMA guide tree', start: P + 1, end: P + M }];
+    Mo.aligns.forEach((ag, k) => g.push({ label: `${tag(k)} ${cname(ag.a)} + ${cname(ag.b)}`, start: P + M + k + 1, end: P + M + k + 1 }));
+    return g;
+  }
+
+  // ---------- rendering ----------
+  function renderTabs() {
+    const g = groups(), ci = g.findIndex(x => s >= x.start && s <= x.end);
+    let o = '<span class="muted">Stages:</span>';
+    g.forEach((x, i) => {
+      const cls = i === ci ? 'on' : i < ci ? 'past' : '';
+      o += `${i ? '<span class="sep">›</span>' : ''}<button class="${cls}" data-g="${i}" title="Jump to the start of this stage">${esc(x.label)}</button>`;
+    });
+    $('tabs').innerHTML = o;
+  }
+
+  function renderDist(v) {
+    const n = Mo.n, ck = v.cur && v.cur.stage === 'pair' ? v.cur.k : -1;
+    let o = '<table class="dm"><thead><tr><th></th>';
+    for (let b = 0; b < n; b++) o += `<th>${seqName(b)}</th>`;
+    o += '</tr></thead><tbody>';
+    for (let a = 0; a < n; a++) {
+      o += `<tr><th>${seqName(a)}</th>`;
+      for (let b = 0; b < n; b++) {
+        if (a === b) { o += '<td class="dg">–</td>'; continue; }
+        const k = Mo.pk[a][b], p = Mo.pairs[k], cls = [a < b ? 'hi' : 'lo'];
+        if (k === ck) cls.push('cur');
+        o += `<td class="${cls.join(' ')}" data-k="${k}">${k < v.pairsDone ? (a < b ? num(p.al.score) : f3(p.d)) : ''}</td>`;
+      }
+      o += '</tr>';
+    }
+    $('dist').innerHTML = o + '</tbody></table>';
+  }
+
+  function renderTree(v) {
+    const n = Mo.n, nodes = Mo.nodes, root = nodes.length - 1, c = v.cur;
+    const order = [];
+    (function walk(id) { const nd = nodes[id]; if (id < n) order.push(id); else { walk(nd.left); walk(nd.right); } })(root);
+    const RH = 30, TOP = 22, X0 = 54, WT = 190, H = nodes[root].height || 1;
+    const x = id => X0 + (1 - nodes[id].height / H) * WT, y = [];
+    order.forEach((id, t) => { y[id] = TOP + t * RH; });
+    for (let id = n; id < nodes.length; id++) y[id] = (y[nodes[id].left] + y[nodes[id].right]) / 2;
+    const cur = c && c.stage !== 'pair' ? n + c.k : -1, inCur = new Set(cur >= 0 ? nodes[cur].members : []);
+    const W = X0 + WT + 44 + Math.max(...Mo.seqs.map(q => q.length)) * 7.5, Ht = TOP + (n - 1) * RH + 16;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Ht}" viewBox="0 0 ${W} ${Ht}">`;
+    for (let k = 0; k < v.mergesDone; k++) {
+      const nd = nodes[n + k];
+      o += `<path class="br${n + k === cur ? ' cur' : ''}" d="M${x(nd.left)},${y[nd.left]} H${x(n + k)} V${y[nd.right]} H${x(nd.right)}"/>`;
+    }
+    for (const id of order) {
+      const xl = x(id), cls = inCur.has(id) ? ' in' : '';
+      o += `<circle class="lfd" cx="${xl}" cy="${y[id]}" r="3"/><text class="lf nm${cls}" x="${xl + 8}" y="${y[id]}">${seqName(id)}</text>` +
+        `<text class="lf sq${cls}" x="${xl + 36}" y="${y[id]}">${esc(Mo.seqs[id])}</text>`;
+    }
+    for (let k = 0; k < v.mergesDone; k++) {
+      const id = n + k, cls = (id === cur ? ' cur' : '') + (k < v.alignsDone ? ' done' : '');
+      o += `<text class="nh" x="${x(id) - 13}" y="${y[id] - 6}">${f3(nodes[id].height)}</text>` +
+        `<g class="nd${cls}" data-k="${k}"><title>${cname(id)}: d = ${f3(nodes[id].d)}, height d/2 = ${f3(nodes[id].height)}; aligned in step ${tag(k)}</title>` +
+        `<circle cx="${x(id)}" cy="${y[id]}" r="10"/><text x="${x(id)}" y="${y[id]}">${tag(k)}</text></g>`;
+    }
+    $('tree').innerHTML = o + '</svg>';
+    $('treenote').innerHTML = v.mergesDone ? 'Node labels: height d/2 and the step that aligns the node’s two children.' : 'The tree is built in step 2, once all distances are known.';
+  }
+
+  function dpSVG(ca) {
+    const al = ca.al, { n, m, nA, nB } = al;
+    const HY = Math.max(46, 24 + nA * LH), HX = Math.max(46, 26 + nB * LW);
+    const ty = t => 16 + (HY - 16 - nA * LH) / 2 + t * LH + LH / 2;   // centre of letter row t of A
+    const lx = t => 18 + (HX - 18 - nB * LW) / 2 + t * LW + LW / 2;   // centre of letter column t of B
+    const W = HX + (n + 1) * CELL, H = HY + (m + 1) * CELL;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 ${W + 2} ${H + 2}" style="max-width:${W + 2}px"><defs>`;
+    for (const d of DIRS) o += `<marker id="ah-${d}" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="9" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="${COLORS[d]}"/></marker>`;
+    o += '</defs>';
+    // corner: names of A's rows beside the column letters, names of B's rows above the row letters
+    o += `<g class="corner"><rect x="0" y="0" width="${HX}" height="${HY}"/>`;
+    ca.namesA.forEach((nm, t) => { o += `<text x="4" y="${ty(t)}">${nm}</text>`; });
+    ca.namesB.forEach((nm, t) => { o += `<text class="nb" x="${lx(t)}" y="9">${nm}</text>`; });
+    o += '</g>';
+    const letter = (c, cx, cy) => `<text class="ch${c === GAP || c === '–' ? ' gp' : ''}" x="${cx}" y="${cy}">${esc(c)}</text>`;
+    for (let j = 0; j <= n; j++) {
+      const x = HX + j * CELL;
+      o += `<g class="hdr"><rect x="${x}" y="0" width="${CELL}" height="${HY}"/><text class="idx" x="${x + CELL / 2}" y="10">j=${j}</text>`;
+      o += j ? al.colA[j - 1].map((c, t) => letter(c, x + CELL / 2, ty(t))).join('') : letter('–', x + CELL / 2, (ty(0) + ty(nA - 1)) / 2);
+      o += '</g>';
+    }
+    for (let i = 0; i <= m; i++) {
+      const y = HY + i * CELL;
+      o += `<g class="hdr"><rect x="0" y="${y}" width="${HX}" height="${CELL}"/><text class="idx" x="9" y="${y + CELL / 2}">${i}</text>`;
+      o += i ? al.colB[i - 1].map((c, t) => letter(c, lx(t), y + CELL / 2)).join('') : letter('–', (lx(0) + lx(nB - 1)) / 2, y + CELL / 2);
+      o += '</g>';
+    }
+    const onPath = new Set(['0,0']), arrowsOn = new Set();
+    for (const op of al.ops) { onPath.add(op.i + ',' + op.j); arrowsOn.add(op.i + ',' + op.j + ',' + op.d); }
+    let rects = '', arrows = '', vals = '';
+    const r1 = 12, r2 = 14;
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= n; j++) {
+      const x = HX + j * CELL, y = HY + i * CELL, key = i + ',' + j, cls = ['cell'];
+      if (i > 0 && j > 0 && al.sig[i - 1][j - 1] > 0) cls.push('match');
+      if (onPath.has(key)) cls.push('trace');
+      rects += `<g class="${cls.join(' ')}" data-i="${i}" data-j="${j}"><rect x="${x}" y="${y}" width="${CELL}" height="${CELL}"/></g>`;
+      vals += `<text class="val" x="${x + CELL / 2}" y="${y + CELL / 2}">${num(al.S[i][j])}</text>`;
+      const cx = x + CELL / 2, cy = y + CELL / 2;
+      for (const d of al.P[i][j]) {
+        const pi = d === 'left' ? i : i - 1, pj = d === 'up' ? j : j - 1;
+        const px = HX + pj * CELL + CELL / 2, py = HY + pi * CELL + CELL / 2;
+        const dx = cx - px, dy = cy - py, len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len;
+        const tcls = arrowsOn.has(key + ',' + d) ? ' trace' : '';
+        arrows += `<line class="arrow ${d}${tcls}" x1="${(px + ux * r1).toFixed(1)}" y1="${(py + uy * r1).toFixed(1)}" x2="${(cx - ux * r2).toFixed(1)}" y2="${(cy - uy * r2).toFixed(1)}" marker-end="url(#ah-${d})"/>`;
+      }
+    }
+    return o + rects + arrows + vals + '</svg>';
+  }
+
+  function clusterTable(t, hl, rowCls) {
+    let o = '<table><thead><tr><th></th>' + t.ids.map(id => `<th>${cname(id)}</th>`).join('') + '</tr></thead><tbody>';
+    t.ids.forEach((id, r) => {
+      o += `<tr class="${rowCls(r)}"><th>${cname(id)}</th>` + t.ids.map((_, c) => r === c ? '<td class="dg">–</td>' : `<td class="${hl(r, c)}">${f3(t.mat[r][c])}</td>`).join('') + '</tr>';
+    });
+    return o + '</tbody></table>';
+  }
+
+  function renderMain(v) {
+    const c = v.cur;
+    curAl = null; cellEls = [];
+    $('legend').hidden = !c || c.stage === 'upgma';
+    if (!c) {
+      $('mainTitle').textContent = 'Alignment matrix';
+      $('main').innerHTML = '<div class="empty">Nothing computed yet. Press → to align the first pair.</div>';
+      return;
+    }
+    if (c.stage === 'upgma') {
+      const mg = Mo.merges[c.k], { ia, ib } = mg, M = Mo.merges.length;
+      $('mainTitle').textContent = `2 UPGMA merge ${c.k + 1} of ${M}: join ${cname(mg.a)} and ${cname(mg.b)}`;
+      const before = clusterTable(mg.before, (r, q) => (r === ia && q === ib) || (r === ib && q === ia) ? 'min' : r === ia || r === ib ? 'rel' : '', () => '');
+      const after = mg.after.ids.length > 1
+        ? clusterTable(mg.after, (r, q) => r === ia || q === ia ? 'new' : '', r => r === ia ? 'new' : '')
+        : `<div class="empty">one cluster left, ${cname(mg.node)}: the root</div>`;
+      $('main').innerHTML = `<div class="upg"><div><div class="cap">Before: the smallest distance is boxed; shaded rows are averaged</div>${before}</div>` +
+        `<div class="arr">→</div><div><div class="cap">After: the new cluster ${cname(mg.node)}</div>${after}</div></div>`;
+      return;
+    }
+    if (c.stage === 'pair') {
+      const p = Mo.pairs[c.k];
+      $('mainTitle').textContent = `1 Pairwise alignment ${c.k + 1} of ${Mo.pairs.length}: A = ${seqName(p.a)} (columns), B = ${seqName(p.b)} (rows)`;
+      curAl = { al: p.al, namesA: [seqName(p.a)], namesB: [seqName(p.b)] };
+    } else {
+      const ag = Mo.aligns[c.k];
+      $('mainTitle').textContent = `${tag(c.k)} ${cap(kind(ag))} alignment: A = ${cname(ag.a)} (columns), B = ${cname(ag.b)} (rows)`;
+      curAl = { al: ag.al, namesA: ag.A.members.map(seqName), namesB: ag.B.members.map(seqName) };
+    }
+    $('main').innerHTML = dpSVG(curAl);
+    for (const g of $('main').querySelectorAll('g.cell')) {
+      const i = +g.dataset.i, j = +g.dataset.j;
+      (cellEls[i] = cellEls[i] || [])[j] = g;
+    }
+  }
+
+  function renderAlign(v) {
+    const c = v.cur;
+    if (!c || c.stage === 'upgma') { $('align').innerHTML = ''; return; }
+    if (c.stage === 'pair') {
+      const p = Mo.pairs[c.k], [ra, rb] = p.al.rows;
+      let top = '', mid = '', bot = '';
+      for (let t = 0; t < ra.length; t++) {
+        const a = ra[t], b = rb[t];
+        if (a === GAP || b === GAP) { top += a === GAP ? '<span class="gap">-</span>' : esc(a); mid += ' '; bot += b === GAP ? '<span class="gap">-</span>' : esc(b); }
+        else if (a === b) { top += esc(a); mid += '<span class="bar">|</span>'; bot += esc(b); }
+        else { top += `<span class="mis">${esc(a)}</span>`; mid += '<span class="mis">·</span>'; bot += `<span class="mis">${esc(b)}</span>`; }
+      }
+      const na = seqName(p.a).padEnd(4), nb = seqName(p.b).padEnd(4);
+      $('align').innerHTML = `<pre>${na}${top}\n    ${mid}\n${nb}${bot}</pre>` +
+        `<div class="alab">${p.M} matches, ${p.X} mismatch${p.X === 1 ? '' : 'es'}, ${p.G} gap column${p.G === 1 ? '' : 's'}, length ${p.L}: ` +
+        `d(${seqName(p.a)}, ${seqName(p.b)}) = (${p.X} + ${p.G}) / ${p.L} = <b>${f3(p.d)}</b></div>`;
+      return;
+    }
+    const ag = Mo.aligns[c.k], al = ag.al, nA = al.nA, final = c.k === Mo.aligns.length - 1;
+    const newA = al.ops.map(op => op.d === 'up'), newB = al.ops.map(op => op.d === 'left');
+    let o = '<div class="blk">';
+    al.rows.forEach((r, t) => {
+      const fresh = t < nA ? newA : newB;
+      const line = [...r].map((ch, x) => fresh[x] ? `<span class="${t < nA ? 'ngA' : 'ngB'}">-</span>` : ch === GAP ? '<span class="gap">-</span>' : esc(ch)).join('');
+      o += `<div class="r${t === nA ? ' sep' : ''}"><span class="nm">${seqName(ag.members[t])}</span>${line}</div>`;
+    });
+    if (final) {
+      const cons = al.rows[0].split('').map((ch, x) => ch !== GAP && al.rows.every(r => r[x] === ch) ? '*' : ' ').join('');
+      o += `<div class="r"><span class="nm"></span><span class="cons">${cons}</span></div>`;
+    }
+    o += '</div>';
+    o += `<div class="alab">${final ? 'Final multiple alignment' : 'Merged alignment'}: A rows above the dashed line, B rows below; ` +
+      `<span class="ngA">-</span> gap columns inserted into A, <span class="ngB">-</span> into B in this step` +
+      (final ? `; <span class="cons">*</span> = identical in all sequences. SP score = <b>${num(ag.sp)}</b>.` : '.') + '</div>';
+    $('align').innerHTML = o;
+  }
+
+  // ---------- explanations ----------
+  function term(dir, expr, v, best, note) {
+    return `<span class="t-${dir}${v === best ? ' win' : ''}">${expr} = ${num(v)} <i>(${note})</i></span>`;
+  }
+  const sym = c => c === GAP ? '–' : esc(c);
+  function sigNote(al, i, j) {   // σ broken down by symbol pair, A's symbol first
+    const ca = al.colA[j - 1], cb = al.colB[i - 1];
+    if (ca.length === 1 && cb.length === 1) return `${ca[0] === cb[0] ? 'match' : 'mismatch'} ${esc(ca[0])}/${esc(cb[0])}`;
+    const cnt = new Map();
+    for (const x of ca) for (const y of cb) cnt.set(x + y, (cnt.get(x + y) || 0) + 1);
+    return `σ = ${num(al.sig[i - 1][j - 1])}: ` + [...cnt].map(([xy, c]) => `${sym(xy[0])}/${sym(xy[1])}${c > 1 ? ' ×' + c : ''} (${signed(c * pairScore(xy[0], xy[1], SC))})`).join(', ');
+  }
+  function gapNote(col, nOther, lab) {   // a column against a column of nOther gaps
+    if (col.length === 1 && nOther === 1) return lab[0] === 'A' ? `gap: ${esc(col[0])}/–` : `gap: –/${esc(col[0])}`;
+    const r = col.filter(c => c !== GAP).length;
+    return `${lab} = (${col.map(sym).join(',')}) against gaps: ${r} residue${r === 1 ? '' : 's'} × ${nOther} row${nOther === 1 ? '' : 's'} × (${num(SC.gap)})`;
+  }
+  function explainCell(i, j) {
+    const al = curAl.al, S = al.S, nm = (a, b) => `S[${a}][${b}]`;
+    if (i === 0 && j === 0) return `<span class="f">${nm(0, 0)} = <b>0</b></span> <i>(both prefixes empty)</i>`;
+    const best = S[i][j], parts = [];
+    if (i > 0 && j > 0) { const g = al.sig[i - 1][j - 1]; parts.push(term('diag', `${nm(i - 1, j - 1)} ${plus(g)}`, S[i - 1][j - 1] + g, best, sigNote(al, i, j))); }
+    if (i > 0) parts.push(term('up', `${nm(i - 1, j)} ${plus(al.gB[i - 1])}`, S[i - 1][j] + al.gB[i - 1], best, gapNote(al.colB[i - 1], al.nA, `B[${i}]`)));
+    if (j > 0) parts.push(term('left', `${nm(i, j - 1)} ${plus(al.gA[j - 1])}`, S[i][j - 1] + al.gA[j - 1], best, gapNote(al.colA[j - 1], al.nB, `A[${j}]`)));
+    const tie = al.P[i][j].length > 1 ? ` &nbsp;<span class="tie">tie: ${al.P[i][j].length} optimal predecessors</span>` : '';
+    const body = parts.length === 1 ? parts[0] : `max( ${parts.join(' , ')} )`;
+    return `<span class="f">${nm(i, j)} = ${body} = <b>${num(best)}</b></span>${tie}`;
+  }
+
+  const scoreText = () => `match ${signed(SC.match)}, mismatch ${signed(SC.mis)}, gap ${signed(SC.gap)} per position`;
+  function explainPair(k) {
+    const p = Mo.pairs[k], A = seqName(p.a), B = seqName(p.b);
+    return `${A} vs ${B}: score ${num(p.al.score)}; ${p.M} matches, ${p.X} mismatches, ${p.G} gap columns in ${p.L} columns, ` +
+      `so d = (${p.X} + ${p.G}) / ${p.L} = <b>${f3(p.d)}</b>.`;
+  }
+  function explainStep(c) {
+    const P = Mo.pairs.length, M = Mo.merges.length;
+    if (!c) return `<span class="muted">Nothing computed yet. Step 1 aligns all ${P} pairs of the ${Mo.n} sequences (${scoreText()}), step 2 builds the UPGMA guide tree ` +
+      `from the distances, and step 3 aligns along the tree. Press → to start.</span>`;
+    if (c.stage === 'pair') {
+      const p = Mo.pairs[c.k];
+      return `<b>Pair ${c.k + 1} of ${P}:</b> global alignment of A = ${seqName(p.a)} and B = ${seqName(p.b)} with ${scoreText()}; ` +
+        `the bottom-right cell holds the best score. ${explainPair(c.k)} Ties in the traceback are broken diagonal first, then up, then left.` +
+        (c.k === P - 1 ? ' <b>All distances are known.</b>' : '') + ' Hover a cell to see how it is computed.';
+    }
+    if (c.stage === 'upgma') {
+      const mg = Mo.merges[c.k], A = Mo.nodes[mg.a], B = Mo.nodes[mg.b], N = Mo.nodes[mg.node], bm = mg.before.mat;
+      let o = `<b>UPGMA merge ${c.k + 1} of ${M}:</b> the smallest distance is d(${cname(A.id)}, ${cname(B.id)}) = ${f3(mg.d)}, so join them under a new node at height ` +
+        `d/2 = ${f3(N.height)}; its two children are aligned in step ${tag(c.k)}. `;
+      const others = mg.before.ids.map((_, q) => q).filter(q => q !== mg.ia && q !== mg.ib);
+      if (others.length) o += 'Distances from the new cluster are weighted by cluster size: ' +
+        others.map(q => `d(${cname(N.id)}, ${cname(mg.before.ids[q])}) = (${A.size}·${f3(bm[mg.ia][q])} + ${B.size}·${f3(bm[mg.ib][q])}) / ${N.size} = ${f3(mg.row[q])}`).join('; ') +
+        '. This equals the average distance over all pairs of sequences across the two clusters.';
+      else o += '<b>This is the root; the guide tree is complete.</b> Step 3 follows the merge order, so the inputs of every alignment are ready when it is reached.';
+      return o;
+    }
+    const ag = Mo.aligns[c.k], al = ag.al, A = cname(ag.a), B = cname(ag.b), kd = kind(ag);
+    let o = `<b>${tag(c.k)}, ${kd}:</b> align A = ${A} (columns) with B = ${B} (rows). `;
+    if (kd === 'sequence–sequence') o += `Both are single sequences, so this is the same DP as in step 1 (score ${num(al.score)}). `;
+    else {
+      const two = al.nA > 1 && al.nB > 1;
+      o += `${two ? 'Both profiles are kept fixed: their' : 'The profile is kept fixed: its'} columns move as blocks and a gap is inserted into all of ${two ? 'their' : 'its'} rows at once. ` +
+        `σ(column j of A, position i of B) is the sum of the scores of all ${al.nA} × ${al.nB} symbol pairs between the two columns (gap/gap = 0), and a column against a gap ` +
+        `scores (residues in it) × (rows of the other side) × (${num(SC.gap)}). Best score S[${al.m}][${al.n}] = ${num(al.score)}. `;
+    }
+    o += `The SP score of the merged alignment is SP(A) + SP(B) + S[${al.m}][${al.n}] = ${num(ag.A.sp)} + ${num(ag.B.sp)} + ${num(al.score)} = <b>${num(ag.sp)}</b>.`;
+    if (c.k === M - 1) o += ` <b>Done:</b> the final alignment has ${ag.members.length} sequences and ${al.rows[0].length} columns.`;
+    return o + ' Hover a cell to see how it is computed.';
+  }
+  function showExplainDefault() {
+    $('explain').innerHTML = Mo.error ? `<span class="err">${esc(Mo.error)}</span>` : explainStep(view().cur);
+  }
+
+  function renderStatus(v) {
+    const c = v.cur, P = Mo.pairs.length, M = Mo.merges.length;
+    let o = `Step <b>${s}</b> / ${S()} · `;
+    if (!c) o += 'not started';
+    else if (c.stage === 'pair') o += `stage 1, pair ${c.k + 1} of ${P}`;
+    else if (c.stage === 'upgma') o += `stage 2, merge ${c.k + 1} of ${M}`;
+    else o += `stage ${tag(c.k)}, ${kind(Mo.aligns[c.k])} alignment`;
+    o += ` · ${v.pairsDone} of ${P} distances · ${v.mergesDone} of ${M} tree nodes · ${v.alignsDone} of ${M} alignments`;
+    if (s === S()) { const last = Mo.aligns[M - 1]; o += ` · final MSA ${Mo.n} × ${last.al.rows[0].length}, SP score ${num(last.sp)}`; }
+    $('status').innerHTML = o;
+  }
+
+  function render() {
+    $('perr').textContent = Mo.error || '';
+    if (Mo.error) {
+      for (const id of ['tabs', 'dist', 'tree', 'treenote', 'main', 'align', 'status']) $(id).innerHTML = '';
+      $('mainTitle').textContent = '';
+      $('legend').hidden = true;
+      curAl = null;
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    const v = view();
+    renderTabs(); renderDist(v); renderTree(v); renderMain(v); renderAlign(v); renderStatus(v);
+    showExplainDefault();
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnStage').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------- events ----------
+  function clearPreds() {
+    for (const g of $('main').querySelectorAll('g.cell.pred')) g.classList.remove('pred');
+  }
+  function hoverCell(i, j) {
+    clearPreds();
+    for (const [pi, pj] of [[i - 1, j - 1], [i - 1, j], [i, j - 1]])
+      if (pi >= 0 && pj >= 0 && cellEls[pi] && cellEls[pi][pj]) cellEls[pi][pj].classList.add('pred');
+    $('explain').innerHTML = explainCell(i, j);
+  }
+  const nextStage = () => {
+    const g = groups(), ci = g.findIndex(x => s >= x.start && s <= x.end);
+    if (ci < 0) setS(g[0].end);
+    else setS(s < g[ci].end || ci + 1 >= g.length ? g[ci].end : g[ci + 1].end);
+  };
+
+  $('main').addEventListener('mouseover', e => {
+    const g = e.target.closest('g.cell');
+    if (g && curAl) hoverCell(+g.dataset.i, +g.dataset.j);
+  });
+  $('main').addEventListener('mouseout', e => {
+    const g = e.target.closest('g.cell');
+    if (g && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('g.cell'))) { clearPreds(); showExplainDefault(); }
+  });
+  $('main').addEventListener('mouseleave', () => { clearPreds(); showExplainDefault(); });
+  $('dist').addEventListener('click', e => { const td = e.target.closest('td[data-k]'); if (td) setS(+td.dataset.k + 1); });
+  $('dist').addEventListener('mouseover', e => {
+    const td = e.target.closest('td[data-k]'); if (!td) return;
+    const k = +td.dataset.k, p = Mo.pairs[k];
+    $('explain').innerHTML = k < view().pairsDone ? explainPair(k) : `<span class="muted">${seqName(p.a)} vs ${seqName(p.b)}: not aligned yet (click to jump there).</span>`;
+  });
+  $('dist').addEventListener('mouseout', e => { if (e.target.closest('td[data-k]')) showExplainDefault(); });
+  $('tree').addEventListener('click', e => {
+    const g = e.target.closest('g.nd');
+    if (g) setS(Mo.pairs.length + Mo.merges.length + +g.dataset.k + 1);
+  });
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-g]');
+    if (b) setS(groups()[+b.dataset.g].start);
+  });
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnStage').addEventListener('click', nextStage);
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('selEx').addEventListener('change', () => { $('seqs').value = EXAMPLES[$('selEx').value]; rebuild(); });
+  $('seqs').addEventListener('input', rebuild);
+  for (const id of ['scM', 'scX', 'scG']) $(id).addEventListener('change', rebuild);
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'n': case 'N': nextStage(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the slides' example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  $('selEx').value = 'slides';
+  $('seqs').value = EXAMPLES.slides;
+  rebuild();
+})();
+</script>
+</body>
+</html>
