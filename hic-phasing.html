@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hi-C Phasing by Min-Cut</title>
+<style>
+  :root {
+    --h1: #e8641b; --h1bg: #fcdcc6;
+    --h2: #1f6fd9; --h2bg: #d3e4fb;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --err: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { font: inherit; width: 5em; padding: 3px 4px; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  textarea, input[type=text] { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; box-sizing: border-box; }
+  textarea { width: 20em; height: 10em; resize: vertical; display: block; }
+  input[type=text] { width: 12em; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 6px; }
+  .err { color: var(--err); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .lblk { display: block; font-size: .9rem; color: #444; margin: 8px 0 3px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 44px; align-items: flex-start; }
+  .top > div:first-child { flex: 0 0 auto; max-width: 480px; }
+  .top > div:last-child { flex: 1 1 480px; max-width: 760px; }
+  .top .controls { margin: 10px 0 0; }
+  .inrow { display: flex; gap: 12px; align-items: flex-start; }
+  .exbtns { display: flex; flex-direction: column; gap: 8px; }
+  .model { font-size: .9rem; line-height: 1.55; }
+  .model p { margin: 6px 0; }
+  .algo { margin: 4px 0 0; padding-left: 1.8em; }
+  .algo li { padding: 1px 6px; border-radius: 3px; }
+  .algo li.on { background: var(--curbg); font-weight: 600; }
+  .stepc { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ddd; }
+  .p { color: var(--h1); font-weight: 700; } .m { color: var(--h2); font-weight: 700; }
+  .neg { color: var(--err); font-weight: 700; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  [hidden] { display: none !important; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .views { display: flex; flex-wrap: wrap; gap: 12px 40px; align-items: flex-start; }
+  #grid { overflow: auto; max-height: 720px; }
+
+  /* read grid */
+  .c { stroke: #fff; stroke-width: 1.5; }
+  .c.p { fill: var(--h1bg); } .c.m { fill: var(--h2bg); } .c.z { fill: #f7f7f7; }
+  .ct { font: 600 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #333; pointer-events: none; }
+  .ct.gap { fill: #bbb; font-weight: 400; }
+  .ct.e { font-weight: 800; text-decoration: underline; fill: #000; }
+  .ebox { fill: none; stroke: #222; stroke-width: 2; pointer-events: none; }
+  .lbl { font: 600 13px system-ui, sans-serif; text-anchor: end; dominant-baseline: central; fill: #888; pointer-events: none; }
+  .lbl.p { fill: var(--h1); } .lbl.m { fill: var(--h2); }
+  .sh { font: 700 13px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #888; pointer-events: none; }
+  .sh.p { fill: var(--h1); } .sh.m { fill: var(--h2); }
+  .flipcol { fill: var(--curbg); pointer-events: none; }
+  .ok { font: 700 14px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #2e8b57; pointer-events: none; }
+  .ok.x { fill: var(--err); }
+  .rl { font: 11px system-ui, sans-serif; fill: #555; text-anchor: end; dominant-baseline: central; }
+  .hbox { fill: none; stroke-width: 1.5; } .hbox.p { stroke: var(--h1); } .hbox.m { stroke: var(--h2); }
+  .hl { font: 700 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .hl.p { fill: var(--h1); } .hl.m { fill: var(--h2); }
+  .hit { fill: transparent; }
+  .hov:hover .hit { fill: rgba(230, 168, 0, .18); }
+  .hov:hover .c { stroke: var(--cur); }
+
+  /* graph */
+  .ed { stroke: #666; }
+  .ed.neg { stroke: var(--err); } .ed.zero { stroke: #aaa; stroke-dasharray: 4 3; }
+  .ecut { stroke: var(--cur); stroke-width: 10; opacity: .45; stroke-linecap: round; pointer-events: none; }
+  .ehit { stroke: transparent; stroke-width: 12; }
+  .edge:hover .ed { stroke-width: 3.5; }
+  .wbg { fill: #fff; pointer-events: none; }
+  .wt { font: 700 12px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #444; pointer-events: none; }
+  .wt.neg { fill: var(--err); }
+  .nd { stroke: #fff; stroke-width: 2; }
+  .nd.p { fill: var(--h1); } .nd.m { fill: var(--h2); }
+  .ring { fill: none; stroke: var(--cur); stroke-width: 4; pointer-events: none; }
+  .nt { font: 700 14px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #fff; pointer-events: none; }
+  .node:hover .nd { stroke: #222; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+  .legend .ln { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid; }
+</style>
+</head>
+<body>
+<h1>Hi-C phasing: flipping SNPs across a minimum cut</h1>
+
+<p class="hint">
+  A Hi-C read pair links two heterozygous SNPs that may be far apart. If both of its bases sit on the same haplotype, it
+  is consistent with the phasing; otherwise it counts as one error. The SNPs form a graph whose edges carry the read
+  counts. Flipping the SNPs on one side of a cut changes the number of errors by the total weight of the edges the cut
+  crosses. The algorithm therefore repeatedly finds a cut through the most negative weight and flips it.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> random reset (new initial SNP phases).
+</p>
+
+<div class="top">
+  <div>
+    <h2>1 Hi-C reads</h2>
+    <label class="lblk" for="reads">One read per line, covering exactly two SNPs: R = reference allele, A = alternate allele, - = SNP not on the read</label>
+    <div class="inrow">
+      <div class="exbtns">
+        <button id="btnSlide" title="The six reads over four SNPs on the slide, started from its SNP phase">Slide</button>
+        <button id="btnMedium" title="Eight SNPs, two rounds of cut and flip">Medium</button>
+        <button id="btnHard" title="Ten SNPs where the greedy cut can stop at a local optimum">Hard</button>
+      </div>
+      <textarea id="reads" spellcheck="false" autocomplete="off"></textarea>
+    </div>
+    <div class="controls">
+      <label>Seed <input type="number" id="seed" autocomplete="off" value="1" min="0" max="999999"></label>
+    </div>
+    <label class="lblk" for="start">Haplotype 1 to start from (R/A per SNP; empty = random)</label>
+    <input type="text" id="start" spellcheck="false" autocomplete="off">
+    <div id="derr" class="err"></div>
+  </div>
+  <div class="model">
+    <h2>2 Model and algorithm</h2>
+    <p>δ<sub>i</sub> ∈ {1, −1} is the phase of SNP i: <span class="p">1</span> if haplotype 1 carries the reference allele, <span class="m">−1</span> if it carries the alternate.
+      Read k links SNPs i and j with bases b<sub>ki</sub>, b<sub>kj</sub> (R = 1, A = −1). It is consistent if b<sub>ki</sub>b<sub>kj</sub>δ<sub>i</sub>δ<sub>j</sub> = 1:
+      R-R or A-A at two SNPs of the same phase, or R-A or A-R at two SNPs of opposite phase. Otherwise it is one error.</p>
+    <p><b>Graph.</b> Nodes are SNPs, and an edge joins two SNPs linked by at least one read. With W<sub>ij</sub> = Σ<sub>k</sub> b<sub>ki</sub>b<sub>kj</sub> over those reads,
+      edge i–j has weight w<sub>ij</sub> = δ<sub>i</sub>δ<sub>j</sub>W<sub>ij</sub>, which is +1 for each consistent read and −1 for each inconsistent one under the current phase.
+      Flipping a set S of SNPs negates every edge between S and the rest, so it changes the error count by the total weight of that cut.
+      The best flip is the cut of most negative weight. With negative weights this minimum cut is a max-cut problem, which is NP-hard, so the cut is found greedily:</p>
+    <ol class="algo" id="algo">
+      <li>Randomly assign SNP phase</li>
+      <li>Find a cut through the most negative weight</li>
+      <li>If the cut is negative, flip the SNPs on one side of it and go to step 2</li>
+    </ol>
+  </div>
+</div>
+
+<div class="controls stepc">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+  <button id="btnRand" title="Back to the start with new random initial SNP phases (s)">Random reset</button>
+</div>
+
+<h2>3 Reads and the SNP graph</h2>
+<div class="legend">
+  <span><span class="box" style="background:var(--h1bg)"></span>base carried by haplotype 1 under the current SNP phases</span>
+  <span><span class="box" style="background:var(--h2bg)"></span>by haplotype 2</span>
+  <span><span class="box" style="border:2px solid #222"></span><b><u>bold</u></b>: an inconsistent read (its two cells differ in colour)</span>
+  <span><span class="ln" style="border-color:#666"></span>positive edge</span>
+  <span><span class="ln" style="border-color:var(--err)"></span>negative edge</span>
+  <span><span class="box" style="background:var(--curbg)"></span>the cut: SNPs to flip and the edges it crosses</span>
+</div>
+<div class="views">
+  <div id="grid"></div>
+  <div style="max-width:400px"><div id="graph"></div><div id="exact" class="note"></div></div>
+</div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const EX_SLIDE = 'R--A\n-A-R\n-R-R\nA-R-\n-AR-\n--RR', EX_SLIDE_START = 'RRRA';
+  // Medium: two cut-and-flip rounds to the optimum (seed 1). Hard: from the seed-1 start the greedy cut stops one
+  // error above the optimum; about 13% of starts do so.
+  const EX_MEDIUM = 'AA------\nR-R-----\nR---R---\nR-----A-\n-R-A----\n-A---A--\n-R---R--\n--RR----\n---AA---\n---A-R--\n---R--A-\n---A--A-\n----R-A-\n----A--R';
+  const EX_HARD = 'R-A-------\nA----R----\nA----R----\n-AR-------\n-R------A-\n-R------R-\n--R---R---\n--A------A\n---AA-----\n---R-R----\n' +
+    '---A----A-\n---R-----A\n---R-----R\n----AA----\n----A----R\n-----AR---\n-----R-A--\n-----A--A-';
+  const DEFAULTS = { seed: 1 };
+
+  // ---------- pure model ----------
+  const MAXN = 60, MAXM = 16, MAXEXACT = 20, MAXIT = 100;
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  // Reads -> B[k][i] = 1 (R), -1 (A) or 0, and the pair P[k] = {i, j, s = b_ki b_kj} of the two SNPs it links.
+  function parseReads(text) {
+    const L = text.split('\n').map(l => l.replace(/\s+/g, '').toUpperCase()).filter(l => l);
+    if (!L.length) return { error: 'Enter at least one read: a line of R, A and - with exactly two R/A.' };
+    if (L.length > MAXN) return { error: `At most ${MAXN} reads.` };
+    const B = [], P = [];
+    for (let k = 0; k < L.length; k++) {
+      if (/[^RA.\-]/.test(L[k])) return { error: `Read ${k + 1} may only contain R, A and - (or .).` };
+      if (L[k].length !== L[0].length) return { error: `Read ${k + 1} has ${L[k].length} SNPs but read 1 has ${L[0].length}; pad with - for SNPs not on a read.` };
+      const row = [...L[k]].map(c => c === 'R' ? 1 : c === 'A' ? -1 : 0), on = [];
+      row.forEach((b, i) => { if (b) on.push(i); });
+      if (on.length !== 2) return { error: `Read ${k + 1} covers ${on.length} SNP${on.length === 1 ? '' : 's'}; a Hi-C read here links exactly two.` };
+      B.push(row); P.push({ i: on[0], j: on[1], s: row[on[0]] * row[on[1]] });
+    }
+    if (L[0].length < 2) return { error: 'At least two SNPs are needed.' };
+    if (L[0].length > MAXM) return { error: `At most ${MAXM} SNPs.` };
+    return { B, P };
+  }
+  function parseHap(text, m) {
+    const s = text.replace(/\s+/g, '').toUpperCase();
+    if (!s) return { delta: null };
+    if (/[^RA]/.test(s)) return { error: 'The start haplotype may only contain R and A.' };
+    if (s.length !== m) return { error: `The start haplotype has ${s.length} SNPs but the reads have ${m}.` };
+    return { delta: [...s].map(c => c === 'R' ? 1 : -1) };
+  }
+
+  // W[i][j] = sum of b_ki b_kj over the reads linking i and j (same-phase votes minus opposite-phase votes);
+  // has[i][j] says whether any read links them.
+  function linkMatrix(m, P) {
+    const W = Array.from({ length: m }, () => Array(m).fill(0)), has = Array.from({ length: m }, () => Array(m).fill(false));
+    for (const { i, j, s } of P) { W[i][j] += s; W[j][i] += s; has[i][j] = has[j][i] = true; }
+    return { W, has };
+  }
+  const consistent = (p, delta) => p.s * delta[p.i] * delta[p.j] > 0;
+  const nIncons = (P, delta) => P.reduce((t, p) => t + (consistent(p, delta) ? 0 : 1), 0);
+  // w_ij = delta_i delta_j W_ij: consistent minus inconsistent reads on edge i-j under the current phase.
+  const edgeWeights = (W, delta) => W.map((row, i) => row.map((v, j) => delta[i] * delta[j] * v));
+
+  // Greedy cut seeded at edge u-v: u and v start on opposite sides (1 and 2); then the unplaced SNP linked to the
+  // placed ones with the largest |a - b| (a, b = its total weight to sides 1 and 2) joins the side it is more
+  // positively linked to, which adds the smaller of a and b to the cut. Ties go to the lower SNP and to side 1.
+  // SNPs never linked to the seed's component stay unplaced and are not flipped.
+  function greedyCut(m, w, has, u, v) {
+    const side = Array(m).fill(0), order = [];
+    side[u] = 1; side[v] = 2;
+    for (;;) {
+      let x0 = -1, best = -1, a0 = 0, b0 = 0;
+      for (let x = 0; x < m; x++) {
+        if (side[x]) continue;
+        let a = 0, b = 0, adj = false;
+        for (let y = 0; y < m; y++) if (side[y] && has[x][y]) { adj = true; if (side[y] === 1) a += w[x][y]; else b += w[x][y]; }
+        if (adj && Math.abs(a - b) > best) { best = Math.abs(a - b); x0 = x; a0 = a; b0 = b; }
+      }
+      if (x0 < 0) break;
+      side[x0] = a0 >= b0 ? 1 : 2;
+      order.push({ x: x0, a: a0, b: b0, side: side[x0] });
+    }
+    let c = 0;
+    const cross = [];
+    for (let x = 0; x < m; x++) for (let y = x + 1; y < m; y++)
+      if (has[x][y] && side[x] && side[y] && side[x] !== side[y]) { c += w[x][y]; cross.push([x, y]); }
+    // Flip the smaller side; on a tie, the side without the lowest-numbered placed SNP.
+    const n1 = side.filter(s => s === 1).length, n2 = side.filter(s => s === 2).length;
+    const fs = n2 < n1 || (n2 === n1 && side.indexOf(1) < side.indexOf(2)) ? 2 : 1;
+    const flip = [];
+    side.forEach((s, x) => { if (s === fs) flip.push(x); });
+    return { u, v, side, order, c, cross, flip, fs };
+  }
+  // Try every negative edge as the seed, most negative first, and keep the most negative cut; null if no edge is negative.
+  function bestCut(m, w, has) {
+    const seeds = [];
+    for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) if (has[i][j] && w[i][j] < 0) seeds.push([i, j]);
+    if (!seeds.length) return null;
+    seeds.sort((p, q) => w[p[0]][p[1]] - w[q[0]][q[1]] || p[0] - q[0] || p[1] - q[1]);
+    let best = null;
+    for (const [i, j] of seeds) { const cut = greedyCut(m, w, has, i, j); if (!best || cut.c < best.c) best = cut; }
+    return best;
+  }
+
+  // Steps: init, then per iteration a 'cut' and a 'flip', until the best greedy cut is not negative ('stop'). Each
+  // flip lowers the error count by -c >= 1, so the loop ends.
+  function runHiC(m, P, W, has, d0) {
+    const steps = [];
+    let delta = d0;
+    steps.push({ kind: 'init', it: 0, delta, w: edgeWeights(W, delta), inc: nIncons(P, delta) });
+    for (let it = 1; it <= MAXIT; it++) {
+      const w = edgeWeights(W, delta), cut = bestCut(m, w, has), inc = nIncons(P, delta);
+      if (!cut || cut.c >= 0) { steps.push({ kind: 'stop', it, delta, w, cut, inc }); break; }
+      steps.push({ kind: 'cut', it, delta, w, cut, inc });
+      const nd = delta.map((d, x) => cut.flip.includes(x) ? -d : d);
+      steps.push({ kind: 'flip', it, delta: nd, w: edgeWeights(W, nd), cut, inc: nIncons(P, nd), before: inc });
+      delta = nd;
+    }
+    return steps;
+  }
+  // Fewest inconsistent reads by brute force over all phases with delta_1 = 1 (flipping every SNP changes nothing).
+  function exactHiC(m, P) {
+    if (m > MAXEXACT) return null;
+    let best = Infinity, arg = 1, nOpt = 0;
+    for (let mask = 1; mask < 1 << m; mask += 2) {
+      let e = 0;
+      for (const { i, j, s } of P) if (((mask >> i ^ mask >> j) & 1 ? -s : s) < 0) e++;
+      if (e < best) { best = e; arg = mask; nOpt = 1; } else if (e === best) nOpt++;
+    }
+    return { inc: best, nOpt, delta: Array.from({ length: m }, (_, i) => arg >> i & 1 ? 1 : -1) };
+  }
+
+  function buildModel(readText, seed, startText) {
+    const R = parseReads(readText); if (R.error) return R;
+    const { B, P } = R, m = B[0].length;
+    const S = parseHap(startText, m); if (S.error) return S;
+    const rand = mulberry32(seed), d0 = S.delta || Array.from({ length: m }, () => rand() < 0.5 ? 1 : -1);
+    const { W, has } = linkMatrix(m, P);
+    let nEdge = 0;
+    for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) if (has[i][j]) nEdge++;
+    return { B, P, n: B.length, m, W, has, nEdge, given: !!S.delta, steps: runHiC(m, P, W, has, d0), exact: exactHiC(m, P) };
+  }
+
+  // ---------- state ----------
+  let M = null, k = 0;
+  function rebuild() {
+    M = buildModel($('reads').value, +$('seed').value || 0, $('start').value);
+    k = 0;
+    render();
+  }
+  function load(reads, start) { $('reads').value = reads; $('start').value = start; rebuild(); }
+  function randomize() { $('seed').value = Math.floor(Math.random() * 1e6); $('start').value = ''; rebuild(); }
+  const K = () => M.error ? 0 : M.steps.length - 1;
+  const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
+  const hapStr = delta => delta.map(d => d > 0 ? 'R' : 'A').join('');
+  const ph = v => `<span class="${v > 0 ? 'p' : 'm'}">${v > 0 ? '1' : '−1'}</span>`;
+  const base = b => b > 0 ? 'R' : 'A';
+  const sgn = v => v > 0 ? `+${v}` : v < 0 ? `<span class="neg">−${-v}</span>` : '0';
+  const list = a => a.length <= 2 ? a.join(' and ') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+  const snps = xs => `SNP${xs.length > 1 ? 's' : ''} ${list(xs.map(x => x + 1))}`;
+  // The cut shown at this step: the one found (cut) or just applied (flip).
+  const shownCut = st => st.kind === 'cut' || st.kind === 'flip' ? st.cut : null;
+
+  // ---------- rendering ----------
+  const CS = 28, LW = 70, TOP = 30;
+  function renderGrid() {
+    const { B, P, n, m } = M, st = M.steps[k], d = st.delta, cut = shownCut(st);
+    const xR = LW + m * CS + 10, yHap = TOP + n * CS + 14, W = xR + 30, H = yHap + 2 * (CS + 4) + 4;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    if (cut) for (const i of cut.flip) o += `<rect class="flipcol" x="${LW + i * CS}" y="2" width="${CS}" height="${yHap - 6}"/>`;
+    o += `<text class="rl" x="${LW - 8}" y="${TOP - 13}">SNP</text>`;
+    for (let i = 0; i < m; i++)
+      o += `<g class="hov" data-x="${i}"><rect class="hit" x="${LW + i * CS}" y="2" width="${CS}" height="${TOP - 6}"/><text class="sh ${d[i] > 0 ? 'p' : 'm'}" x="${LW + i * CS + CS / 2}" y="${TOP - 13}">${i + 1}</text></g>`;
+    for (let r = 0; r < n; r++) {
+      const y = TOP + r * CS, row = B[r], p = P[r], ok = consistent(p, d), hap = row[p.i] * d[p.i] > 0 ? 'p' : 'm';
+      o += `<g class="hov" data-k="${r}"><rect class="hit" x="0" y="${y}" width="${LW - 2}" height="${CS}"/><text class="lbl ${ok ? hap : ''}" x="${LW - 8}" y="${y + CS / 2}">Read ${r + 1}</text></g>`;
+      for (let i = 0; i < m; i++) {
+        const x = LW + i * CS, b = row[i], e = b && !ok;
+        o += `<g class="hov" data-k="${r}"><rect class="c ${b === 0 ? 'z' : b * d[i] > 0 ? 'p' : 'm'}" x="${x}" y="${y}" width="${CS}" height="${CS}"/>`;
+        o += `<text class="ct${b === 0 ? ' gap' : e ? ' e' : ''}" x="${x + CS / 2}" y="${y + CS / 2}">${b === 0 ? '-' : base(b)}</text>`;
+        if (e) o += `<rect class="ebox" x="${x + 2}" y="${y + 2}" width="${CS - 4}" height="${CS - 4}"/>`;
+        o += '</g>';
+      }
+      o += `<text class="ok${ok ? '' : ' x'}" x="${xR + 10}" y="${y + CS / 2}">${ok ? '✓' : '✗'}</text>`;
+    }
+    for (let h = 0; h < 2; h++) {
+      const y = yHap + h * (CS + 4), cls = h ? 'm' : 'p';
+      o += `<text class="rl" x="${LW - 8}" y="${y + CS / 2}">haplotype ${h + 1}</text><rect class="hbox ${cls}" x="${LW}" y="${y}" width="${m * CS}" height="${CS}"/>`;
+      for (let i = 0; i < m; i++) o += `<text class="hl ${cls}" x="${LW + i * CS + CS / 2}" y="${y + CS / 2}">${base(h ? -d[i] : d[i])}</text>`;
+    }
+    $('grid').innerHTML = o + '</svg>';
+  }
+
+  // Up to four SNPs sit on the corners of a square as on the slide (1 2 / 3 4); more go clockwise round a circle.
+  const GW = 400, GH = 360;
+  function nodePos(m) {
+    const cx = GW / 2, cy = GH / 2;
+    if (m <= 4) return [[cx - 120, cy - 115], [cx + 120, cy - 115], [cx - 120, cy + 115], [cx + 120, cy + 115]].slice(0, m);
+    const R = 150;
+    return Array.from({ length: m }, (_, i) => { const a = -Math.PI / 2 + 2 * Math.PI * i / m; return [cx + R * Math.cos(a), cy + R * Math.sin(a)]; });
+  }
+  function renderGraph() {
+    const { m, has } = M, st = M.steps[k], d = st.delta, w = st.w, cut = shownCut(st), pos = nodePos(m);
+    const cross = new Set(cut ? cut.cross.map(([x, y]) => x * m + y) : []), flip = new Set(cut ? cut.flip : []);
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${GW}" height="${GH}" viewBox="0 0 ${GW} ${GH}">`;
+    for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) if (has[i][j] && cross.has(i * m + j))
+      o += `<line class="ecut" x1="${pos[i][0]}" y1="${pos[i][1]}" x2="${pos[j][0]}" y2="${pos[j][1]}"/>`;
+    let labels = '';
+    for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
+      if (!has[i][j]) continue;
+      const v = w[i][j], [x1, y1] = pos[i], [x2, y2] = pos[j], sw = 1.5 + 0.8 * Math.min(Math.abs(v), 4);
+      o += `<g class="edge" data-i="${i}" data-j="${j}"><line class="ehit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>` +
+        `<line class="ed${v < 0 ? ' neg' : v === 0 ? ' zero' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${sw}"/></g>`;
+      // The label sits 40% of the way from the lower-numbered SNP, so crossing diagonals keep their labels apart.
+      const lx = x1 + 0.4 * (x2 - x1), ly = y1 + 0.4 * (y2 - y1), t = v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0';
+      labels += `<rect class="wbg" x="${lx - 4 - 4 * t.length}" y="${ly - 9}" width="${8 + 8 * t.length}" height="18" rx="4"/><text class="wt${v < 0 ? ' neg' : ''}" x="${lx}" y="${ly}">${t}</text>`;
+    }
+    o += labels;
+    for (let i = 0; i < m; i++) {
+      const [x, y] = pos[i];
+      o += `<g class="node hov" data-x="${i}">${flip.has(i) ? `<circle class="ring" cx="${x}" cy="${y}" r="22"/>` : ''}` +
+        `<circle class="nd ${d[i] > 0 ? 'p' : 'm'}" cx="${x}" cy="${y}" r="17"/><text class="nt" x="${x}" y="${y}">${i + 1}</text></g>`;
+    }
+    $('graph').innerHTML = o + '</svg>';
+    const ex = M.exact;
+    $('exact').innerHTML = ex ? `Brute force over all 2<sup>${M.m - 1}</sup> SNP phases (SNP 1 fixed, because flipping every SNP changes nothing): ` +
+      `at least <b>${ex.inc}</b> inconsistent read${ex.inc === 1 ? '' : 's'}${ex.nOpt > 1 ? `, reached by ${ex.nOpt} phasings` : ''}.` : '';
+  }
+
+  // ---------- explanations ----------
+  function cutTxt(cut, w) {
+    const { u, v, side, order } = cut, nm = s => `the side of SNP ${(s === 1 ? u : v) + 1}`;
+    let o = `Seeded at edge ${u + 1}–${v + 1} (${sgn(w[u][v])}), SNPs ${u + 1} and ${v + 1} start on opposite sides`;
+    if (order.length) o += `; then, most decided first, ` + order.map(({ x, a, b, side: s }) =>
+      `SNP ${x + 1} (${sgn(a)} to SNP ${u + 1}'s side, ${sgn(b)} to SNP ${v + 1}'s) joins ${nm(s)}`).join('; ');
+    const unplaced = side.map((s, x) => s ? -1 : x).filter(x => x >= 0);
+    if (unplaced.length) o += `. ${snps(unplaced)} ${unplaced.length > 1 ? 'are' : 'is'} not linked to this part of the graph and stay${unplaced.length > 1 ? '' : 's'} put`;
+    return o;
+  }
+  function explainStep() {
+    const st = M.steps[k], N = M.n, ex = M.exact;
+    if (st.kind === 'init') {
+      return `<b>Step 1:</b> ${M.given ? 'start from the given SNP phases' : 'assign every SNP a random phase'}: haplotype 1 = <span class="mono p">${hapStr(st.delta)}</span> and haplotype 2 is its complement. ` +
+        `A read is consistent when its two bases sit on the same haplotype, i.e. its two cells have the same colour. ` +
+        `Each edge adds +1 for every consistent read on it and −1 for every inconsistent one. Now <b>${st.inc}</b> of ${N} reads are inconsistent.`;
+    }
+    const head = `<b>Iteration ${st.it}, step ${st.kind === 'flip' ? 3 : 2}:</b> `;
+    if (st.kind === 'cut') {
+      const { cut } = st;
+      return head + `flipping a set of SNPs negates the edges between it and the rest, so the change in errors is the weight of that cut. ` +
+        `Finding the most negative cut is NP-hard, so it is built greedily from each negative edge and the most negative result is kept. ${cutTxt(cut, st.w)}. ` +
+        `The cut crosses ${cut.cross.map(([x, y]) => `${x + 1}–${y + 1} (${sgn(st.w[x][y])})`).join(', ')}, with total weight <b>${sgn(cut.c)}</b>.`;
+    }
+    if (st.kind === 'flip') {
+      const { cut } = st;
+      return head + `the cut is negative, so flip ${snps(cut.flip)} (the smaller side; flipping the other side instead gives the same phasing with the haplotypes swapped). ` +
+        `The edges across the cut change sign, and the inconsistent reads drop from ${st.before} to <b>${st.inc}</b>. Back to step 2.`;
+    }
+    let o = head;
+    if (!st.cut) o += `no edge is negative, so every cut has weight ≥ 0 and no flip can reduce the errors. The phasing is optimal with <b>${st.inc}</b> inconsistent read${st.inc === 1 ? '' : 's'}` +
+      (st.inc ? `; no phasing can avoid ${st.inc === 1 ? 'it, because it contradicts' : 'them, because they contradict'} other reads` : '') + '.';
+    else o += `negative edges remain, but the best greedy cut has weight ${sgn(st.cut.c)}, so no flip it can find helps and the algorithm stops with <b>${st.inc}</b> inconsistent read${st.inc === 1 ? '' : 's'}. ` +
+      (ex ? (st.inc === ex.inc ? 'Brute force confirms this is optimal: the negative edges come from reads that no phasing can satisfy together.' :
+        `Brute force reaches ${ex.inc}, so this is a local optimum of the greedy search; a random reset may find the optimum.`) : '');
+    return o + ` Haplotypes: <span class="mono p">${hapStr(st.delta)}</span> and <span class="mono m">${hapStr(st.delta.map(v => -v))}</span>.`;
+  }
+  function explainRead(r) {
+    const st = M.steps[k], p = M.P[r], d = st.delta, row = M.B[r], ok = consistent(p, d);
+    return `<b>Read ${r + 1}</b> links SNPs ${p.i + 1} and ${p.j + 1} with ${base(row[p.i])}-${base(row[p.j])}, saying the two SNPs have ${p.s > 0 ? 'the same' : 'opposite'} phase` +
+      ` (b<sub>i</sub>b<sub>j</sub> = ${p.s > 0 ? '1' : '−1'}). Now δ<sub>${p.i + 1}</sub>δ<sub>${p.j + 1}</sub> = ${d[p.i] * d[p.j] > 0 ? '1 (same phase)' : '−1 (opposite phase)'}, ` +
+      `so the read is ${ok ? 'consistent and adds +1' : 'inconsistent and adds −1'} to edge ${p.i + 1}–${p.j + 1}.`;
+  }
+  function explainEdge(i, j) {
+    const st = M.steps[k], d = st.delta, rs = M.P.map((p, r) => p.i === i && p.j === j ? r : -1).filter(r => r >= 0);
+    const parts = rs.map(r => { const p = M.P[r]; return `read ${r + 1} (${base(M.B[r][i])}-${base(M.B[r][j])}, ${consistent(p, d) ? '+1' : '<span class="neg">−1</span>'})`; });
+    return `<b>Edge ${i + 1}–${j + 1}:</b> ${parts.join(', ')}. W<sub>${i + 1}${j + 1}</sub> = ${M.W[i][j]} and δ<sub>${i + 1}</sub>δ<sub>${j + 1}</sub> = ${d[i] * d[j] > 0 ? '1' : '−1'}, ` +
+      `so w = ${sgn(st.w[i][j])}. Flipping exactly one of the two SNPs would turn it into ${sgn(-st.w[i][j])}.`;
+  }
+  function explainSNP(x) {
+    const st = M.steps[k], d = st.delta, m = M.m, nb = [];
+    let tot = 0;
+    for (let y = 0; y < m; y++) if (M.has[x][y]) { nb.push(`${y + 1} (${sgn(st.w[x][y])})`); tot += st.w[x][y]; }
+    return `<b>SNP ${x + 1}</b>: δ = ${ph(d[x])}, so haplotype 1 carries ${base(d[x])}. ` +
+      (nb.length ? `Edges to ${nb.join(', ')}. Flipping this SNP alone is the cut around it, of weight ${sgn(tot)}, and would change the inconsistent reads by ${tot > 0 ? '+' : tot < 0 ? '−' : ''}${Math.abs(tot)}.` : 'No read links it to another SNP, so its phase is undetermined.');
+  }
+  function showExplainDefault() {
+    $('explain').innerHTML = M.error ? `<span class="err">${esc(M.error)}</span>` : explainStep();
+  }
+  function renderStatus() {
+    const st = M.steps[k];
+    $('status').innerHTML = `Step <b>${k}</b> / ${K()} · ${M.n} reads, ${M.m} SNPs, ${M.nEdge} edges · ` +
+      (st.it ? `iteration ${st.it} · ` : '') + `inconsistent reads = ${st.inc}` + (st.kind === 'stop' ? ' · stopped' : '');
+  }
+
+  function render() {
+    $('derr').textContent = M.error || '';
+    document.querySelectorAll('#algo li').forEach((li, j) => li.classList.toggle('on', !M.error && j === { init: 0, cut: 1, stop: 1, flip: 2 }[M.steps[k].kind]));
+    if (M.error) {
+      for (const id of ['grid', 'graph', 'exact', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    renderGrid(); renderGraph(); renderStatus(); showExplainDefault();
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = $('btnRun').disabled = k === K();
+  }
+
+  // ---------- events ----------
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnRun').addEventListener('click', () => setK(K()));
+  $('btnReset').addEventListener('click', () => setK(0));
+  $('btnRand').addEventListener('click', randomize);
+  $('btnSlide').addEventListener('click', () => load(EX_SLIDE, EX_SLIDE_START));
+  $('btnMedium').addEventListener('click', () => load(EX_MEDIUM, ''));
+  $('btnHard').addEventListener('click', () => load(EX_HARD, ''));
+  $('seed').addEventListener('change', rebuild);
+  for (const id of ['reads', 'start']) $(id).addEventListener('input', rebuild);
+  for (const id of ['grid', 'graph']) {
+    $(id).addEventListener('mouseover', e => {
+      if (M.error) return;
+      const ed = e.target.closest('g.edge'), g = e.target.closest('g.hov');
+      if (ed) $('explain').innerHTML = explainEdge(+ed.dataset.i, +ed.dataset.j);
+      else if (g) $('explain').innerHTML = g.dataset.k !== undefined ? explainRead(+g.dataset.k) : explainSNP(+g.dataset.x);
+    });
+    $(id).addEventListener('mouseout', e => { if (e.target.closest('g.edge, g.hov')) showExplainDefault(); });
+  }
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(K()); break;
+      case 'r': case 'R': setK(0); break;
+      case 's': case 'S': randomize(); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the slide example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  load(EX_SLIDE, EX_SLIDE_START);
+})();
+</script>
+</body>
+</html>

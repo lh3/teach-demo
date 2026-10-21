@@ -19,6 +19,7 @@ action at a time.
 | `msa.html` | Progressive multiple sequence alignment: distances, UPGMA guide tree, profile alignment |
 | `li-stephens.html` | Li–Stephens HMM: diploid phasing and imputation, Viterbi vs posterior decoding |
 | `read-phasing.html` | Read-based phasing: minimum error correction (MEC) by alternating read and SNP phases |
+| `hic-phasing.html` | Hi-C phasing: greedy min-cut on the SNP graph, flip and repeat |
 
 `index.html` only links to the pages above.
 

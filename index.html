@@ -82,6 +82,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <div class="desc">Phase heterozygous SNPs from reads by minimising the number of read bases that disagree with the two haplotypes. Alternate between the best phase for each read and the best phase for each SNP, watch errors disappear, and see why random restarts are needed: even error-free reads can leave the search stuck at a local optimum.</div>
     <div class="tags">MEC · alternating optimisation · local optima · random restarts</div>
   </a></li>
+  <li><a href="hic-phasing.html">
+    <span class="num">11</span><span class="name">Hi-C phasing: flipping SNPs across a minimum cut</span>
+    <div class="desc">Each Hi-C read links two distant SNPs and is either consistent with the phasing or not. Build the SNP graph whose edge weights count consistent minus inconsistent reads, find a greedy cut through the most negative weight, flip one side and repeat, and compare the result with the brute-force optimum.</div>
+    <div class="tags">SNP graph · min-cut / max-cut · greedy cut · local optima</div>
+  </a></li>
 </ol>
 
 <footer>Source: <a href="https://github.com/lh3/teach-demo">github.com/lh3/teach-demo</a>. No external dependencies; each page also works when opened as a local file.</footer>

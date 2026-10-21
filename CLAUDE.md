@@ -68,6 +68,16 @@ working when opened as a local `file://` URL.
   masks. Example buttons, left of the read box: Simple (the algorithm slide, started from RRAR), Medium (slide 1,
   the default) and Ladder (error-free reads, MEC 0, where 4 of the 5 seed-1 restarts get stuck). Random
   reset (key `s`, after Reset) draws a new seed and clears the start haplotype, so every restart gets a new initial δ.
+- `hic-phasing.html`: Hi-C phasing (§6.4 of `phasing-notes.pdf`, slide `hic.pdf`) with 0/1 errors. Each read is a
+  line of R/A/- covering exactly two SNPs; it is consistent when b_ib_jδ_iδ_j = 1. The SNP graph has edge weight
+  w_ij = δ_iδ_jW_ij (W_ij = Σ b_ib_j), i.e. consistent minus inconsistent reads under the current phase; flipping a
+  set S changes the error count by the weight of the cut (S, rest). Each iteration builds a greedy cut (HapCUT-like)
+  from every negative edge as seed: the unplaced SNP with the largest |a − b| joins the side it is more positively
+  linked to; the most negative cut is kept, its smaller side flipped; stop when no greedy cut is negative. An exact
+  min cut would solve the problem in one flip, hence the greedy cut. `exactHiC` brute-forces 2^(m−1) phases. Up to
+  four SNPs use the slide's square layout (1 2 / 3 4), more go round a circle. Examples: Slide (start RRRA,
+  reproduces the slide's cut of weight −3), Medium (two rounds to the optimum), Hard (seed 1 stops one error above
+  the optimum). Same Random reset button and `s` key as `read-phasing.html`.
 
 ## Developing and checking
 
@@ -94,7 +104,8 @@ Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex
 `rna-seq-em.html`, `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`, and `parseSeqs`,
 `alignProfiles`, `upgma`, `buildModel` in `msa.html`, and `parsePanel`, `parseGeno`, `emissions`, `forwardBackward`,
 `viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`, and `parseReads`, `parseHap`,
-`bestSigma`, `bestDelta`, `runRestarts`, `exactMEC`, `buildModel` in `read-phasing.html`) free of DOM access
+`bestSigma`, `bestDelta`, `runRestarts`, `exactMEC`, `buildModel` in `read-phasing.html`, and `parseReads`,
+`linkMatrix`, `greedyCut`, `bestCut`, `runHiC`, `exactHiC`, `buildModel` in `hic-phasing.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
@@ -132,5 +143,5 @@ All demos follow the same pattern; keep new pages consistent with it.
 GitHub Pages serves the repo root, so new demos go at the root, are linked from
 `index.html` with relative paths, and must not rely on a server. Slide PDFs the instructor
 drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`, `li-stephens.pdf`, `phasing-notes.pdf`,
-`phasing-slides.pdf`) and the reference scripts
+`phasing-slides.pdf`, `hic.pdf`) and the reference scripts
 `rna-seq-em.py` and `hmm-coin-em.py` are reference material and are not committed.
