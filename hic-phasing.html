@@ -89,7 +89,10 @@
   .nd.p { fill: var(--h1); } .nd.m { fill: var(--h2); }
   .ring { fill: none; stroke: var(--cur); stroke-width: 4; pointer-events: none; }
   .nt { font: 700 14px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #fff; pointer-events: none; }
+  .node { cursor: grab; }
   .node:hover .nd { stroke: #222; }
+  body.dragging, body.dragging .node { cursor: grabbing; }
+  #graph svg { touch-action: none; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; }
   .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
   .legend .ln { display: inline-block; width: 22px; height: 0; vertical-align: middle; margin-right: 6px; border-top: 2px solid; }
@@ -103,7 +106,7 @@
   is consistent with the phasing; otherwise it counts as one error. The SNPs form a graph whose edges carry the read
   counts. Flipping the SNPs on one side of a cut changes the number of errors by the total weight of the edges the cut
   crosses. The algorithm therefore repeatedly finds a cut through the most negative weight and flips it.
-  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> random reset (new initial SNP phases).
+  Drag the SNPs in the graph to rearrange it. Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> random reset (new initial SNP phases).
 </p>
 
 <div class="top">
@@ -308,13 +311,15 @@
   }
 
   // ---------- state ----------
-  let M = null, k = 0;
+  // pos[x] = [x, y] of SNP x in the graph; dragged positions survive steps and edits that keep the SNP count.
+  let M = null, k = 0, pos = null, drag = null;
   function rebuild() {
     M = buildModel($('reads').value, +$('seed').value || 0, $('start').value);
+    if (!M.error && (!pos || pos.length !== M.m)) pos = nodePos(M.m);
     k = 0;
     render();
   }
-  function load(reads, start) { $('reads').value = reads; $('start').value = start; rebuild(); }
+  function load(reads, start) { $('reads').value = reads; $('start').value = start; pos = null; rebuild(); }
   function randomize() { $('seed').value = Math.floor(Math.random() * 1e6); $('start').value = ''; rebuild(); }
   const K = () => M.error ? 0 : M.steps.length - 1;
   const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
@@ -366,7 +371,7 @@
     return Array.from({ length: m }, (_, i) => { const a = -Math.PI / 2 + 2 * Math.PI * i / m; return [cx + R * Math.cos(a), cy + R * Math.sin(a)]; });
   }
   function renderGraph() {
-    const { m, has } = M, st = M.steps[k], d = st.delta, w = st.w, cut = shownCut(st), pos = nodePos(m);
+    const { m, has } = M, st = M.steps[k], d = st.delta, w = st.w, cut = shownCut(st);
     const cross = new Set(cut ? cut.cross.map(([x, y]) => x * m + y) : []), flip = new Set(cut ? cut.flip : []);
     let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${GW}" height="${GH}" viewBox="0 0 ${GW} ${GH}">`;
     for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) if (has[i][j] && cross.has(i * m + j))
@@ -492,6 +497,22 @@
     });
     $(id).addEventListener('mouseout', e => { if (e.target.closest('g.edge, g.hov')) showExplainDefault(); });
   }
+  // drag SNPs in the graph (the SVG is drawn at 1:1, so client offsets are SVG coordinates)
+  $('graph').addEventListener('pointerdown', e => {
+    const g = e.target.closest('g.node'); if (!g || M.error) return;
+    const r = g.closest('svg').getBoundingClientRect(), x = +g.dataset.x;
+    drag = { x, dx: pos[x][0] - (e.clientX - r.left), dy: pos[x][1] - (e.clientY - r.top) };
+    document.body.classList.add('dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const svg = $('graph').querySelector('svg'); if (!svg) return;
+    const r = svg.getBoundingClientRect(), clamp = (v, hi) => Math.min(hi - 20, Math.max(20, v));
+    pos[drag.x] = [clamp(e.clientX - r.left + drag.dx, GW), clamp(e.clientY - r.top + drag.dy, GH)];
+    renderGraph();
+  });
+  window.addEventListener('pointerup', () => { drag = null; document.body.classList.remove('dragging'); });
   document.addEventListener('keydown', e => {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;

@@ -75,7 +75,8 @@ working when opened as a local `file://` URL.
   from every negative edge as seed: the unplaced SNP with the largest |a − b| joins the side it is more positively
   linked to; the most negative cut is kept, its smaller side flipped; stop when no greedy cut is negative. An exact
   min cut would solve the problem in one flip, hence the greedy cut. `exactHiC` brute-forces 2^(m−1) phases. Up to
-  four SNPs use the slide's square layout (1 2 / 3 4), more go round a circle. Examples: Slide (start RRRA,
+  four SNPs use the slide's square layout (1 2 / 3 4), more go round a circle; SNPs can be dragged (pointer
+  events as in `ovasm.html`; `pos` survives steps and edits that keep the SNP count, an example button resets it). Examples: Slide (start RRRA,
   reproduces the slide's cut of weight −3), Medium (two rounds to the optimum), Hard (seed 1 stops one error above
   the optimum). Same Random reset button and `s` key as `read-phasing.html`.
 
