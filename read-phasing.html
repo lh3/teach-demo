@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Read-Based Phasing by MEC</title>
+<style>
+  :root {
+    --h1: #e8641b; --h1bg: #fcdcc6;
+    --h2: #1f6fd9; --h2bg: #d3e4fb;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --err: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  input[type=number] { font: inherit; width: 5em; padding: 3px 4px; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  textarea, input[type=text] { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; box-sizing: border-box; }
+  textarea { width: 20em; height: 10em; resize: vertical; display: block; }
+  input[type=text] { width: 12em; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 6px; }
+  .err { color: var(--err); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .lblk { display: block; font-size: .9rem; color: #444; margin: 8px 0 3px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 44px; align-items: flex-start; }
+  .top > div:first-child { flex: 0 0 auto; max-width: 480px; }
+  .inrow { display: flex; gap: 12px; align-items: flex-start; }
+  .exbtns { display: flex; flex-direction: column; gap: 8px; }
+  .top > div:last-child { flex: 1 1 480px; max-width: 760px; }
+  .top .controls { margin: 10px 0 0; }
+  .model { font-size: .9rem; line-height: 1.55; }
+  .model p { margin: 6px 0; }
+  .algo { margin: 4px 0 0; padding-left: 1.8em; }
+  .algo li { padding: 1px 6px; border-radius: 3px; }
+  .algo li.on { background: var(--curbg); font-weight: 600; }
+  .stepc { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ddd; }
+  .p { color: var(--h1); font-weight: 700; } .m { color: var(--h2); font-weight: 700; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  [hidden] { display: none !important; }
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  #grid { overflow: auto; max-height: 720px; }
+
+  /* read grid */
+  .c { stroke: #fff; stroke-width: 1.5; }
+  .c.p { fill: var(--h1bg); } .c.m { fill: var(--h2bg); } .c.z { fill: #f7f7f7; }
+  .ct { font: 600 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #333; pointer-events: none; }
+  .ct.gap { fill: #bbb; font-weight: 400; }
+  .ct.e { font-weight: 800; text-decoration: underline; fill: #000; }
+  .ebox { fill: none; stroke: #222; stroke-width: 2; pointer-events: none; }
+  .lbl { font: 600 13px system-ui, sans-serif; text-anchor: end; dominant-baseline: central; fill: #888; pointer-events: none; }
+  .lbl.p { fill: var(--h1); } .lbl.m { fill: var(--h2); }
+  .sh { font: 700 13px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: #888; pointer-events: none; }
+  .sh.p { fill: var(--h1); } .sh.m { fill: var(--h2); }
+  .flipcol { fill: var(--curbg); pointer-events: none; }
+  .cn { font: 12px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; fill: #777; pointer-events: none; }
+  .cn.win { font-weight: 800; fill: #222; }
+  .cn.win.p { fill: var(--h1); } .cn.win.m { fill: var(--h2); }
+  .ch { font: 11px system-ui, sans-serif; text-anchor: middle; fill: #555; }
+  .rl { font: 11px system-ui, sans-serif; fill: #555; text-anchor: end; dominant-baseline: central; }
+  .hbox { fill: none; stroke-width: 1.5; } .hbox.p { stroke: var(--h1); } .hbox.m { stroke: var(--h2); }
+  .hl { font: 700 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .hl.p { fill: var(--h1); } .hl.m { fill: var(--h2); }
+  .hit { fill: transparent; }
+  .hov:hover .hit { fill: rgba(230, 168, 0, .18); }
+  .hov:hover .c { stroke: var(--cur); }
+
+  /* restarts table */
+  table { border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 3px 10px; border-bottom: 1px solid #e3e3e3; text-align: right; white-space: nowrap; }
+  th { color: #555; font-weight: 600; border-bottom: 1.5px solid #bbb; }
+  td.mono { text-align: left; }
+  tr.cur td { background: var(--curbg); }
+  tr[data-r] { cursor: pointer; }
+  tr[data-r]:hover td { background: #f3f7fd; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+</style>
+</head>
+<body>
+<h1>Read-based phasing: minimum error correction (MEC)</h1>
+
+<p class="hint">
+  Each read comes from one of the two haplotypes of a diploid sample and shows the reference (R) or alternate (A) allele
+  at the heterozygous SNPs it covers. The page phases the SNPs by minimising the number of read bases that disagree with
+  the two haplotypes. It does this by alternating between choosing the best phase for every read given the SNP phases,
+  and the best phase for every SNP given the read phases. Random restarts help it escape local optima.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>s</kbd> random reset (new initial SNP phases).
+</p>
+
+<div class="top">
+  <div>
+    <h2>1 Reads</h2>
+    <label class="lblk" for="reads">One read per line: R = reference allele, A = alternate allele, - = SNP not on the read</label>
+    <div class="inrow">
+      <div class="exbtns">
+        <button id="btnSimple" title="The four-SNP example on the algorithm slide, started from its SNP phase">Simple</button>
+        <button id="btnMedium" title="The five reads over seven SNPs on the first slide">Medium</button>
+        <button id="btnLocal" title="Error-free reads where most restarts get stuck">Ladder</button>
+      </div>
+      <textarea id="reads" spellcheck="false" autocomplete="off"></textarea>
+    </div>
+    <div class="controls">
+      <label>Restarts <input type="number" id="nrs" autocomplete="off" value="5" min="1" max="50"></label>
+      <label>Seed <input type="number" id="seed" autocomplete="off" value="1" min="0" max="999999"></label>
+    </div>
+    <label class="lblk" for="start">Haplotype 1 to start restart 1 from (R/A per SNP; empty = random)</label>
+    <input type="text" id="start" spellcheck="false" autocomplete="off">
+    <div id="derr" class="err"></div>
+  </div>
+  <div class="model">
+    <h2>2 Model and algorithm</h2>
+    <p>δ<sub>i</sub> ∈ {1, −1} is the phase of SNP i: <span class="p">1</span> if haplotype 1 carries the reference allele, <span class="m">−1</span> if it carries the alternate.
+      σ<sub>k</sub> ∈ {1, −1} is the phase of read k: <span class="p">1</span> if it comes from haplotype 1, <span class="m">−1</span> from haplotype 2.
+      Coding R as 1 and A as −1, read k should show δ<sub>i</sub>σ<sub>k</sub> at SNP i, and each disagreement is an error:
+      q<sub>ki</sub>(δ<sub>i</sub>σ<sub>k</sub>) = 0 if the read base b<sub>ki</sub> = δ<sub>i</sub>σ<sub>k</sub>, and 1 otherwise.</p>
+    <p><b>MEC:</b> find δ and σ that minimise Σ<sub>k</sub> Σ<sub>i∈I<sub>k</sub></sub> q<sub>ki</sub>(δ<sub>i</sub>σ<sub>k</sub>), where I<sub>k</sub> is the set of SNPs on read k.
+      The problem is NP-hard, but the read phases are easy given the SNP phases, and vice versa:</p>
+    <ol class="algo" id="algo">
+      <li>Randomly assign SNP phase</li>
+      <li>Infer optimal read phase</li>
+      <li>If flipping the phases of some SNPs improves, flip them and go to step 2</li>
+      <li>Go to step 1 for enough iterations (to avoid local optima)</li>
+    </ol>
+  </div>
+</div>
+
+<div class="controls stepc">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+  <button id="btnRand" title="Back to the start with new random initial SNP phases for every restart (s)">Random reset</button>
+</div>
+
+<h2>3 Reads, read phases and SNP phases</h2>
+<div class="legend">
+  <span><span class="box" style="background:var(--h1bg)"></span>base carried by haplotype 1 under the current SNP phases</span>
+  <span><span class="box" style="background:var(--h2bg)"></span>base carried by haplotype 2</span>
+  <span>label colour = phase (<span class="p">1</span> / <span class="m">−1</span>)</span>
+  <span><span class="box" style="border:2px solid #222"></span><b><u>bold</u></b>: an error (cell colour ≠ read colour)</span>
+  <span><span class="box" style="background:var(--curbg)"></span>SNPs flipped in this step</span>
+</div>
+<div id="grid"></div>
+
+<h2>4 Restarts</h2>
+<div id="runs"></div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const EX1 = 'RRAAARA\nAARRRAR\nRRARARA\nAARRAAR\nAARRRAA';
+  const EX3 = 'RRAA\nAARR\nRRAR\nAARR\nAARR', EX3_START = 'RRAR';
+  // Error-free reads (MEC 0) on which most random starts stop at a local optimum.
+  const EXL = 'AAR--------\nAARR-------\n--RRA------\n--RRARR----\n----RAAR---\n----RAARRR-\n-----AARRRR\n-----RRAAA-\n------RAAAA';
+  const DEFAULTS = { reads: EX1, nrs: 5, seed: 1, start: '' };
+
+  // ---------- pure model ----------
+  const MAXN = 40, MAXM = 30, MAXEXACT = 20, MAXROUND = 100;
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  // Reads -> B[k][i] = 1 (R), -1 (A) or 0 (SNP i not on read k).
+  function parseReads(text) {
+    const L = text.split('\n').map(l => l.replace(/\s+/g, '').toUpperCase()).filter(l => l);
+    if (!L.length) return { error: 'Enter at least one read: a line of R, A and -.' };
+    if (L.length > MAXN) return { error: `At most ${MAXN} reads.` };
+    for (let k = 0; k < L.length; k++) {
+      if (/[^RA.\-]/.test(L[k])) return { error: `Read ${k + 1} may only contain R, A and - (or .).` };
+      if (L[k].length !== L[0].length) return { error: `Read ${k + 1} has ${L[k].length} SNPs but read 1 has ${L[0].length}; pad with - for SNPs not on a read.` };
+      if (!/[RA]/.test(L[k])) return { error: `Read ${k + 1} covers no SNP.` };
+    }
+    if (L[0].length > MAXM) return { error: `At most ${MAXM} SNPs.` };
+    return { B: L.map(l => [...l].map(c => c === 'R' ? 1 : c === 'A' ? -1 : 0)) };
+  }
+  // Optional start: haplotype 1 as R/A, i.e. delta_i = 1 for R.
+  function parseHap(text, m) {
+    const s = text.replace(/\s+/g, '').toUpperCase();
+    if (!s) return { delta: null };
+    if (/[^RA]/.test(s)) return { error: 'The start haplotype may only contain R and A.' };
+    if (s.length !== m) return { error: `The start haplotype has ${s.length} SNPs but the reads have ${m}.` };
+    return { delta: [...s].map(c => c === 'R' ? 1 : -1) };
+  }
+
+  // q_ki(delta_i sigma_k): 1 if read k covers SNP i and its base is not delta_i sigma_k, else 0.
+  const q = (b, d, s) => b !== 0 && b !== d * s ? 1 : 0;
+  const readCost = (row, delta, s) => row.reduce((t, b, i) => t + q(b, delta[i], s), 0);
+  const snpCost = (B, i, d, sigma) => B.reduce((t, row, k) => t + q(row[i], d, sigma[k]), 0);
+  const mec = (B, delta, sigma) => B.reduce((t, row, k) => t + readCost(row, delta, sigma[k]), 0);
+  // Step 2: given delta, each read takes the phase with fewer errors; a tie keeps its current phase (1 at the start).
+  function bestSigma(B, delta, prev) {
+    return B.map((row, k) => {
+      const e1 = readCost(row, delta, 1), e2 = readCost(row, delta, -1);
+      return e1 < e2 ? 1 : e2 < e1 ? -1 : prev ? prev[k] : 1;
+    });
+  }
+  // Step 3: given sigma, the errors at SNP i depend on delta_i alone, so every SNP whose flip strictly reduces its
+  // errors is flipped at once.
+  function bestDelta(B, sigma, delta) {
+    return delta.map((d, i) => snpCost(B, i, -d, sigma) < snpCost(B, i, d, sigma) ? -d : d);
+  }
+
+  // One run per start phase: alternate steps 2 and 3 until step 3 flips nothing. The error count never goes up and
+  // strictly drops whenever a SNP flips, so each run ends.
+  function runRestarts(B, starts) {
+    const steps = [], runs = [];
+    starts.forEach((d0, r) => {
+      let delta = d0, sigma = null, round = 0;
+      const first = steps.length;
+      steps.push({ kind: 'init', r, round, delta, sigma: null });
+      while (round < MAXROUND) {
+        round++;
+        const prev = sigma;
+        sigma = bestSigma(B, delta, prev);
+        steps.push({ kind: 'read', r, round, delta, sigma, prev, mec: mec(B, delta, sigma) });
+        const nd = bestDelta(B, sigma, delta), flipped = [];
+        nd.forEach((d, i) => { if (d !== delta[i]) flipped.push(i); });
+        steps.push({ kind: 'snp', r, round, delta: nd, old: delta, sigma, flipped, before: mec(B, delta, sigma), mec: mec(B, nd, sigma) });
+        delta = nd;
+        if (!flipped.length) break;
+      }
+      runs.push({ start: d0, first, last: steps.length - 1, rounds: round, mec: mec(B, delta, sigma), delta, sigma });
+    });
+    let best = 0;
+    runs.forEach((u, j) => { if (u.mec < runs[best].mec) best = j; });
+    steps.push({ kind: 'best', r: best, delta: runs[best].delta, sigma: runs[best].sigma, mec: runs[best].mec });
+    return { steps, runs, best };
+  }
+
+  // Exact MEC by brute force over SNP phases with delta_1 = 1 (flipping every SNP and read leaves the errors
+  // unchanged); the best sigma for each delta is per read. Bit i of the masks is SNP i.
+  function exactMEC(B) {
+    const m = B[0].length;
+    if (m > MAXEXACT) return null;
+    const pc = x => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return Math.imul((x + (x >>> 4)) & 0x0F0F0F0F, 0x01010101) >>> 24; };
+    const R = B.map(row => row.reduce((t, b, i) => b === 1 ? t | 1 << i : t, 0));
+    const C = B.map(row => row.reduce((t, b, i) => b ? t | 1 << i : t, 0)), L = C.map(pc);
+    let best = Infinity, arg = 1, nOpt = 0;
+    for (let mask = 1; mask < 1 << m; mask += 2) {
+      let e = 0;
+      for (let k = 0; k < B.length && e <= best; k++) { const x = pc((R[k] ^ mask) & C[k]); e += Math.min(x, L[k] - x); }
+      if (e < best) { best = e; arg = mask; nOpt = 1; } else if (e === best) nOpt++;
+    }
+    return { mec: best, nOpt, delta: Array.from({ length: m }, (_, i) => arg >> i & 1 ? 1 : -1) };
+  }
+
+  function buildModel(readText, nRestart, seed, startText) {
+    const P = parseReads(readText); if (P.error) return P;
+    const B = P.B, m = B[0].length;
+    const S = parseHap(startText, m); if (S.error) return S;
+    const rand = mulberry32(seed), starts = [];
+    for (let r = 0; r < nRestart; r++) starts.push(r === 0 && S.delta ? S.delta : Array.from({ length: m }, () => rand() < 0.5 ? 1 : -1));
+    return { B, n: B.length, m, given: !!S.delta, ...runRestarts(B, starts), exact: exactMEC(B) };
+  }
+
+  // ---------- state ----------
+  let M = null, k = 0;
+  function rebuild() {
+    const nrs = Math.max(1, Math.min(50, Math.floor(+$('nrs').value) || 5));
+    $('nrs').value = nrs;
+    M = buildModel($('reads').value, nrs, +$('seed').value || 0, $('start').value);
+    k = 0;
+    render();
+  }
+  function load(reads, start) { $('reads').value = reads; $('start').value = start; rebuild(); }
+  // New initial delta for every restart: a fresh seed, and restart 1 no longer uses a given start haplotype.
+  function randomize() { $('seed').value = Math.floor(Math.random() * 1e6); $('start').value = ''; rebuild(); }
+  const K = () => M.error ? 0 : M.steps.length - 1;
+  const setK = v => { k = Math.max(0, Math.min(K(), v)); render(); };
+  const hapStr = delta => delta.map(d => d > 0 ? 'R' : 'A').join('');
+  const ph = v => `<span class="${v > 0 ? 'p' : 'm'}">${v > 0 ? '1' : '−1'}</span>`;
+  const base = b => b > 0 ? 'R' : 'A';
+  const list = a => a.length <= 2 ? a.join(' and ') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`;
+  const seen = j => k >= M.runs[j].last;
+
+  // ---------- rendering ----------
+  const CS = 28, LW = 70, TOP = 30, CW2 = 42;
+  function renderGrid() {
+    const { B, n, m } = M, st = M.steps[k], d = st.delta, s = st.sigma;
+    const xR = LW + m * CS + 14, yCost = TOP + n * CS + 10, yHap = yCost + 2 * 22 + 10;
+    const W = xR + 2 * CW2 + 6, H = yHap + 2 * (CS + 4) + 4;
+    const flip = st.kind === 'snp' ? new Set(st.flipped) : new Set();
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+    for (const i of flip) o += `<rect class="flipcol" x="${LW + i * CS}" y="2" width="${CS}" height="${yHap - 6}"/>`;
+    o += `<text class="rl" x="${LW - 8}" y="${TOP - 13}">SNP</text>`;
+    for (let i = 0; i < m; i++)
+      o += `<g class="hov" data-i="${i}"><rect class="hit" x="${LW + i * CS}" y="2" width="${CS}" height="${TOP - 6}"/><text class="sh ${d[i] > 0 ? 'p' : 'm'}" x="${LW + i * CS + CS / 2}" y="${TOP - 13}">${i + 1}</text></g>`;
+    for (let r = 0; r < n; r++) {
+      const y = TOP + r * CS, row = B[r];
+      o += `<g class="hov" data-k="${r}"><rect class="hit" x="0" y="${y}" width="${LW - 2}" height="${CS}"/><text class="lbl ${s ? (s[r] > 0 ? 'p' : 'm') : ''}" x="${LW - 8}" y="${y + CS / 2}">Read ${r + 1}</text></g>`;
+      for (let i = 0; i < m; i++) {
+        const x = LW + i * CS, b = row[i], e = s && q(b, d[i], s[r]);
+        o += `<g class="hov" data-k="${r}" data-i="${i}"><rect class="c ${b === 0 ? 'z' : b * d[i] > 0 ? 'p' : 'm'}" x="${x}" y="${y}" width="${CS}" height="${CS}"/>`;
+        o += `<text class="ct${b === 0 ? ' gap' : e ? ' e' : ''}" x="${x + CS / 2}" y="${y + CS / 2}">${b === 0 ? '-' : base(b)}</text>`;
+        if (e) o += `<rect class="ebox" x="${x + 2}" y="${y + 2}" width="${CS - 4}" height="${CS - 4}"/>`;
+        o += '</g>';
+      }
+      if (st.kind === 'read') {
+        const e1 = readCost(row, d, 1), e2 = readCost(row, d, -1);
+        o += `<text class="cn${s[r] > 0 ? ' win p' : ''}" x="${xR + CW2 / 2}" y="${y + CS / 2}">${e1}</text><text class="cn${s[r] < 0 ? ' win m' : ''}" x="${xR + CW2 * 1.5}" y="${y + CS / 2}">${e2}</text>`;
+      }
+    }
+    if (st.kind === 'read') o += `<text class="ch" x="${xR + CW2 / 2}" y="${TOP - 9}">σ = 1</text><text class="ch" x="${xR + CW2 * 1.5}" y="${TOP - 9}">σ = −1</text>` +
+      `<text class="ch" x="${xR + CW2}" y="${TOP - 22}">errors if</text>`;
+    if (st.kind === 'snp') {
+      o += `<text class="rl" x="${LW - 8}" y="${yCost + 10}">errors, kept</text><text class="rl" x="${LW - 8}" y="${yCost + 32}">flipped</text>`;
+      for (let i = 0; i < m; i++) {
+        const a = snpCost(B, i, st.old[i], s), b = snpCost(B, i, -st.old[i], s), x = LW + i * CS + CS / 2;
+        o += `<text class="cn${b >= a ? ' win' : ''}" x="${x}" y="${yCost + 10}">${a}</text><text class="cn${b < a ? ' win' : ''}" x="${x}" y="${yCost + 32}">${b}</text>`;
+      }
+    }
+    for (let h = 0; h < 2; h++) {
+      const y = yHap + h * (CS + 4), cls = h ? 'm' : 'p';
+      o += `<text class="rl" x="${LW - 8}" y="${y + CS / 2}">haplotype ${h + 1}</text><rect class="hbox ${cls}" x="${LW}" y="${y}" width="${m * CS}" height="${CS}"/>`;
+      for (let i = 0; i < m; i++) o += `<text class="hl ${cls}" x="${LW + i * CS + CS / 2}" y="${y + CS / 2}">${base(h ? -d[i] : d[i])}</text>`;
+    }
+    $('grid').innerHTML = o + '</svg>';
+  }
+
+  function renderRuns() {
+    const st = M.steps[k], fin = k === K();
+    let o = `<table><thead><tr><th>restart</th><th style="text-align:left">start: haplotype 1</th><th>rounds</th><th>MEC</th><th style="text-align:left">result: haplotype 1</th><th></th></tr></thead><tbody>`;
+    M.runs.forEach((u, j) => {
+      const done = seen(j), cur = st.kind !== 'best' && st.r === j;
+      o += `<tr data-r="${j}"${cur ? ' class="cur"' : ''} title="Jump to the end of this restart"><td>${j + 1}</td><td class="mono">${hapStr(u.start)}${j === 0 && M.given ? ' (given)' : ''}</td>` +
+        `<td>${done ? u.rounds : ''}</td><td>${done ? `<b>${u.mec}</b>` : ''}</td><td class="mono">${done ? hapStr(u.delta) : ''}</td>` +
+        `<td style="text-align:left">${fin && j === M.best ? '★ best' : done && M.exact && u.mec > M.exact.mec ? 'local optimum' : ''}</td></tr>`;
+    });
+    o += '</tbody></table>';
+    o += M.exact ? `<div class="note">Brute force over all 2<sup>${M.m - 1}</sup> SNP phases (SNP 1 fixed, because flipping every SNP and every read changes nothing) gives the minimum MEC = <b>${M.exact.mec}</b>` +
+      (M.exact.nOpt > 1 ? `, reached by ${M.exact.nOpt} different phasings.` : '.') + '</div>'
+      : `<div class="note">With more than ${MAXEXACT} SNPs the exact minimum is not computed.</div>`;
+    $('runs').innerHTML = o;
+  }
+
+  // ---------- explanations ----------
+  function explainStep() {
+    const st = M.steps[k], R = M.runs.length, head = st.kind === 'best' ? '' : `<b>Restart ${st.r + 1}${st.round ? `, round ${st.round}` : ''}, step ${{ init: 1, read: 2, snp: 3 }[st.kind]}:</b> `;
+    if (st.kind === 'init') {
+      return head + (st.r === 0 && M.given ? 'start from the given SNP phases' : 'assign every SNP a random phase') +
+        `: haplotype 1 = <span class="mono p">${hapStr(st.delta)}</span> and haplotype 2 is its complement. ` +
+        `Each base is coloured by the haplotype that carries it, so a read without errors is a single colour. The reads have no phase yet.`;
+    }
+    if (st.kind === 'read') {
+      const changed = st.prev ? st.sigma.map((v, r) => v !== st.prev[r] ? r + 1 : 0).filter(x => x) : [];
+      const ties = M.B.map((row, r) => readCost(row, st.delta, 1) === readCost(row, st.delta, -1) ? r + 1 : 0).filter(x => x);
+      return head + `with the SNP phases fixed, each read takes the phase with fewer errors, i.e. the haplotype it disagrees with at fewer of its SNPs (columns on the right). ` +
+        (st.prev ? (changed.length ? `Read${changed.length > 1 ? 's' : ''} ${list(changed)} change${changed.length > 1 ? '' : 's'} phase. ` : 'No read changes phase. ') : '') +
+        (ties.length ? `Read${ties.length > 1 ? 's' : ''} ${list(ties)} tie${ties.length > 1 ? '' : 's'} and keep${ties.length > 1 ? '' : 's'} ${st.prev ? 'the current phase' : 'phase 1'}. ` : '') +
+        `Total errors Σ<sub>k</sub>Σ<sub>i∈I<sub>k</sub></sub> q<sub>ki</sub>(δ<sub>i</sub>σ<sub>k</sub>) = <b>${st.mec}</b>.`;
+    }
+    if (st.kind === 'snp') {
+      if (st.flipped.length) {
+        const f = st.flipped.map(i => i + 1);
+        return head + `with the read phases fixed, the errors at a SNP depend only on its own phase (rows at the bottom). Flipping SNP${f.length > 1 ? 's' : ''} ${list(f)} ` +
+          `reduces the errors from ${st.before} to <b>${st.mec}</b>, so ${f.length > 1 ? 'they are' : 'it is'} flipped and we go back to step 2.`;
+      }
+      const u = M.runs[st.r], ex = M.exact;
+      return head + `no single SNP flip reduces the errors, and the read phases are already the best for these SNP phases, so restart ${st.r + 1} has converged with MEC = <b>${st.mec}</b>. ` +
+        (ex ? (u.mec === ex.mec ? 'This is the global minimum.' : `This is a local optimum: the global minimum is ${ex.mec}, but reaching it needs several SNPs flipped together.`) : '') +
+        (st.r + 1 < R ? ` Step 4 starts restart ${st.r + 2} from new random SNP phases.` : '');
+    }
+    const ex = M.exact, b = M.runs[M.best];
+    return `<b>Done, step 4:</b> the best of ${R} restart${R > 1 ? 's' : ''} is restart ${M.best + 1} with MEC = <b>${b.mec}</b>, giving haplotypes <span class="mono p">${hapStr(b.delta)}</span> and <span class="mono m">${hapStr(b.delta.map(v => -v))}</span>. ` +
+      (ex ? (b.mec === ex.mec ? 'It matches the exact minimum from brute force. ' : `Brute force finds ${ex.mec}, so more restarts are needed. `) : '') +
+      'Swapping the names of the two haplotypes (flipping every δ and σ) gives the same errors.';
+  }
+  function explainCell(r, i) {
+    const st = M.steps[k], b = M.B[r][i], d = st.delta[i], s = st.sigma;
+    if (b === 0) return `<b>Read ${r + 1}, SNP ${i + 1}:</b> the read does not cover this SNP, so i ∉ I<sub>${r + 1}</sub> and it adds no error.`;
+    let o = `<b>Read ${r + 1}, SNP ${i + 1}:</b> base ${base(b)} (b = ${b > 0 ? '1' : '−1'}); δ<sub>${i + 1}</sub> = ${ph(d)}, so haplotype 1 carries ${base(d)} here and this base is on haplotype ${b === d ? 1 : 2}. `;
+    if (!s) return o + 'The read has no phase yet.';
+    const e = q(b, d, s[r]);
+    return o + `With σ<sub>${r + 1}</sub> = ${ph(s[r])} the read should show δσ = ${base(d * s[r])}, so q = ${e}${e ? ': an error' : ''}.`;
+  }
+  function explainRead(r) {
+    const st = M.steps[k], row = M.B[r], e1 = readCost(row, st.delta, 1), e2 = readCost(row, st.delta, -1);
+    return `<b>Read ${r + 1}</b> covers ${row.filter(b => b).length} SNPs. Under the current SNP phases it disagrees with haplotype 1 at ${e1} and with haplotype 2 at ${e2} of them` +
+      (st.sigma ? `; its phase is σ = ${ph(st.sigma[r])}, so it contributes ${st.sigma[r] > 0 ? e1 : e2} error${(st.sigma[r] > 0 ? e1 : e2) === 1 ? '' : 's'}.` : '.');
+  }
+  function explainSNP(i) {
+    const st = M.steps[k], s = st.sigma, cov = M.B.filter(row => row[i]).length;
+    let o = `<b>SNP ${i + 1}</b> is covered by ${cov} read${cov === 1 ? '' : 's'}; δ = ${ph(st.delta[i])}, so haplotype 1 carries ${base(st.delta[i])} and haplotype 2 carries ${base(-st.delta[i])}.`;
+    if (s) o += ` With the current read phases it has ${snpCost(M.B, i, st.delta[i], s)} error(s), and ${snpCost(M.B, i, -st.delta[i], s)} if flipped.`;
+    return o;
+  }
+  function showExplainDefault() {
+    $('explain').innerHTML = M.error ? `<span class="err">${esc(M.error)}</span>` : explainStep();
+  }
+  function renderStatus() {
+    const st = M.steps[k];
+    $('status').innerHTML = `Step <b>${k}</b> / ${K()} · ${M.n} reads, ${M.m} SNPs · ` +
+      (st.kind === 'best' ? `done, best MEC = ${st.mec}` : `restart ${st.r + 1} / ${M.runs.length}` + (st.round ? `, round ${st.round}` : '') + (st.sigma ? ` · errors = ${st.mec}` : ''));
+  }
+
+  function render() {
+    $('derr').textContent = M.error || '';
+    document.querySelectorAll('#algo li').forEach((li, j) => li.classList.toggle('on', !M.error && j === { init: 0, read: 1, snp: 2, best: 3 }[M.steps[k].kind]));
+    if (M.error) {
+      for (const id of ['grid', 'runs', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    renderGrid(); renderRuns(); renderStatus(); showExplainDefault();
+    $('btnBack').disabled = k === 0;
+    $('btnStep').disabled = $('btnRun').disabled = k === K();
+  }
+
+  // ---------- events ----------
+  $('btnStep').addEventListener('click', () => setK(k + 1));
+  $('btnBack').addEventListener('click', () => setK(k - 1));
+  $('btnRun').addEventListener('click', () => setK(K()));
+  $('btnReset').addEventListener('click', () => setK(0));
+  $('btnRand').addEventListener('click', randomize);
+  $('btnSimple').addEventListener('click', () => load(EX3, EX3_START));
+  $('btnMedium').addEventListener('click', () => load(EX1, ''));
+  $('btnLocal').addEventListener('click', () => load(EXL, ''));
+  for (const id of ['nrs', 'seed']) $(id).addEventListener('change', rebuild);
+  for (const id of ['reads', 'start']) $(id).addEventListener('input', rebuild);
+  $('grid').addEventListener('mouseover', e => {
+    const g = e.target.closest('g.hov'); if (!g || M.error) return;
+    const r = g.dataset.k, i = g.dataset.i;
+    $('explain').innerHTML = r !== undefined && i !== undefined ? explainCell(+r, +i) : r !== undefined ? explainRead(+r) : explainSNP(+i);
+  });
+  $('grid').addEventListener('mouseout', e => { if (e.target.closest('g.hov')) showExplainDefault(); });
+  $('runs').addEventListener('click', e => { const tr = e.target.closest('tr[data-r]'); if (tr) setK(M.runs[+tr.dataset.r].last); });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setK(k + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setK(k - 1); e.preventDefault(); break;
+      case 'f': case 'F': setK(K()); break;
+      case 'r': case 'R': setK(0); break;
+      case 's': case 'S': randomize(); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the slide example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  rebuild();
+})();
+</script>
+</body>
+</html>

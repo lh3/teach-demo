@@ -18,6 +18,7 @@ action at a time.
 | `hmm.html` | Hidden Markov model: forward–backward with rescaling, posterior decoding, EM |
 | `msa.html` | Progressive multiple sequence alignment: distances, UPGMA guide tree, profile alignment |
 | `li-stephens.html` | Li–Stephens HMM: diploid phasing and imputation, Viterbi vs posterior decoding |
+| `read-phasing.html` | Read-based phasing: minimum error correction (MEC) by alternating read and SNP phases |
 
 `index.html` only links to the pages above.
 

@@ -58,6 +58,16 @@ working when opened as a local `file://` URL.
   the mirror state (b,a) go to the larger transition into the next chosen state. Grids per SNP show e,
   α̃→posterior and δ̃. The panel shows the selected path as red (a) and blue (b) lines with the phased output
   (lowercase red = allele differs from its template, bold = imputed).
+- `read-phasing.html`: read-based phasing as MEC (§6.2 of `phasing-notes.pdf` with 0/1 errors as in
+  `phasing-slides.pdf`). Reads are lines of R/A/- (B[k][i] = 1/−1/0); δ_i is the SNP phase (1 = haplotype 1 carries
+  R), σ_k the read phase, q = 1 when a covered base ≠ δ_iσ_k. Each restart: random δ (or the given start haplotype
+  for restart 1), then rounds of step 2 (each read takes the phase with fewer errors; ties keep the current phase)
+  and step 3 (every SNP whose flip strictly lowers its errors given σ flips at once) until step 3 flips nothing; a
+  final step shows the best restart. Cells are tinted by the haplotype that carries the base under δ, so errors are
+  cells whose tint differs from the read label colour. `exactMEC` brute-forces 2^(m−1) phases (m ≤ 20) with bit
+  masks. Example buttons, left of the read box: Simple (the algorithm slide, started from RRAR), Medium (slide 1,
+  the default) and Ladder (error-free reads, MEC 0, where 4 of the 5 seed-1 restarts get stuck). Random
+  reset (key `s`, after Reset) draws a new seed and clears the start haplotype, so every restart gets a new initial δ.
 
 ## Developing and checking
 
@@ -83,7 +93,8 @@ Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex
 `runSearch`, `buildModel`, the ovasm helpers, `simulate`, `parseCounts`, `emSteps` in
 `rna-seq-em.html`, `stationary`, `hmmGen`, `forwardBackward`, `emSteps` in `hmm.html`, and `parseSeqs`,
 `alignProfiles`, `upgma`, `buildModel` in `msa.html`, and `parsePanel`, `parseGeno`, `emissions`, `forwardBackward`,
-`viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`) free of DOM access
+`viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`, and `parseReads`, `parseHap`,
+`bestSigma`, `bestDelta`, `runRestarts`, `exactMEC`, `buildModel` in `read-phasing.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture
@@ -120,5 +131,6 @@ All demos follow the same pattern; keep new pages consistent with it.
 
 GitHub Pages serves the repo root, so new demos go at the root, are linked from
 `index.html` with relative paths, and must not rely on a server. Slide PDFs the instructor
-drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`, `li-stephens.pdf`) and the reference scripts
+drops in (`ond.pdf`, `blast.pdf`, `rna-seq-em.pdf`, `2026_BIG_hmm.pdf`, `li-stephens.pdf`, `phasing-notes.pdf`,
+`phasing-slides.pdf`) and the reference scripts
 `rna-seq-em.py` and `hmm-coin-em.py` are reference material and are not committed.

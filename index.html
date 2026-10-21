@@ -77,6 +77,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <div class="desc">Explain an unphased diploid genotype as two mosaics of reference haplotypes, with a pair of panel haplotypes as the hidden state. Step the forward and Viterbi recursions left to right and the backward pass right to left, then compare the Viterbi path with posterior decoding, see which allele goes to which copy, and fill in missing genotypes from the copied haplotypes.</div>
     <div class="tags">diploid HMM · n² states · Viterbi · posterior decoding · imputation</div>
   </a></li>
+  <li><a href="read-phasing.html">
+    <span class="num">10</span><span class="name">Read-based phasing: minimum error correction</span>
+    <div class="desc">Phase heterozygous SNPs from reads by minimising the number of read bases that disagree with the two haplotypes. Alternate between the best phase for each read and the best phase for each SNP, watch errors disappear, and see why random restarts are needed: even error-free reads can leave the search stuck at a local optimum.</div>
+    <div class="tags">MEC · alternating optimisation · local optima · random restarts</div>
+  </a></li>
 </ol>
 
 <footer>Source: <a href="https://github.com/lh3/teach-demo">github.com/lh3/teach-demo</a>. No external dependencies; each page also works when opened as a local file.</footer>
