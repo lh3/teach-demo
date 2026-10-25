@@ -2,8 +2,8 @@
 > This project is vibe coded with Claude Code.
 
 Interactive, single-page demos of core sequence-analysis algorithms, from alignment
-and read mapping to assembly, RNA-seq quantification, hidden Markov models and haplotype
-phasing, written for teaching. Each
+and read mapping to assembly, RNA-seq quantification, hidden Markov models, haplotype
+phasing and phylogenetic trees, written for teaching. Each
 page takes toy inputs you can edit and lets you step through the algorithm one
 action at a time.
 
@@ -20,6 +20,7 @@ action at a time.
 | `li-stephens.html` | Li–Stephens HMM: diploid phasing and imputation, Viterbi vs posterior decoding |
 | `read-phasing.html` | Read-based phasing: minimum error correction (MEC) by alternating read and SNP phases |
 | `hic-phasing.html` | Hi-C phasing: greedy min-cut on the SNP graph, flip and repeat |
+| `upgma.html` | UPGMA from a multiple alignment: the distance matrix merge by merge, ultrametric tree |
 
 `index.html` only links to the pages above.
 

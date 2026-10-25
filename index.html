@@ -28,7 +28,7 @@
 <body>
 <h1>Interactive demos of sequence algorithms</h1>
 <p class="sub">Single-page teaching demos of core algorithms in sequence analysis: pairwise and multiple alignment, read mapping,
-genome assembly, RNA-seq quantification, hidden Markov models and haplotype phasing. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
+genome assembly, RNA-seq quantification, hidden Markov models, haplotype phasing and phylogenetic trees. Each page runs entirely in the browser on toy inputs you can edit; step through the algorithm with the
 buttons or the arrow keys and watch every intermediate state.</p>
 
 <ol>
@@ -86,6 +86,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <span class="num">11</span><span class="name">Hi-C phasing: flipping SNPs across a minimum cut</span>
     <div class="desc">Each Hi-C read links two distant SNPs and is either consistent with the phasing or not. Build the SNP graph whose edge weights count consistent minus inconsistent reads, find a greedy cut through the most negative weight, flip one side and repeat, and compare the result with the brute-force optimum.</div>
     <div class="tags">SNP graph · min-cut / max-cut · greedy cut · local optima</div>
+  </a></li>
+  <li><a href="upgma.html">
+    <span class="num">12</span><span class="name">UPGMA: a tree from a multiple alignment</span>
+    <div class="desc">Turn an alignment into pairwise distances, then repeatedly join the two closest clusters and replace their rows by size-weighted averages. Every intermediate distance matrix stays on screen next to the growing tree, and hovering an entry shows the entries and sequence pairs it comes from. At the end, the distances implied by the tree are compared with the data to expose the molecular-clock assumption.</div>
+    <div class="tags">distance matrix · average linkage · ultrametric tree · molecular clock</div>
   </a></li>
 </ol>
 

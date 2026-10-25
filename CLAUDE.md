@@ -79,6 +79,16 @@ working when opened as a local `file://` URL.
   events as in `ovasm.html`; `pos` survives steps and edits that keep the SNP count, an example button resets it). Examples: Slide (start RRRA,
   reproduces the slide's cut of weight −3), Medium (two rounds to the optimum), Hard (seed 1 stops one error above
   the optimum). Same Random reset button and `s` key as `read-phasing.html`.
+- `upgma.html`: UPGMA from an MSA ("name sequence" lines, bare sequences named A, B, … or FASTA; up to 10 × 120).
+  The distance is the number of differences, the p-distance or Jukes–Cantor; a gap against a residue is skipped or
+  counted as a difference, a gap/gap column is never compared. `upgma` is the one in `msa.html` (the new cluster takes
+  the lower slot, ties go to the first pair in row-major order) plus `ties` and `keep` (slot after → slot before).
+  Steps: start (D₀), then per merge a join (minimum boxed, node at d/2) and an update (D_{k+1} appended, new row blue;
+  the last merge has no update), then done (tree distances 2·h(LCA) against D₀, Newick). Earlier matrices stay on
+  screen unless "show earlier matrices" is off. Hovering an entry toggles classes on the source entries in the previous
+  matrix and on the averaged sequence pairs in D₀, and redraws the alignment (differing and skipped columns, or the
+  two clusters' rows). Examples: Six (near-clock, recovers the tree), Gaps (p-distance) and No clock (a fast B, so
+  UPGMA returns ((A,(C,D)),B) instead of ((A,B),(C,D))).
 
 ## Developing and checking
 
@@ -106,7 +116,8 @@ Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex
 `alignProfiles`, `upgma`, `buildModel` in `msa.html`, and `parsePanel`, `parseGeno`, `emissions`, `forwardBackward`,
 `viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`, and `parseReads`, `parseHap`,
 `bestSigma`, `bestDelta`, `runRestarts`, `exactMEC`, `buildModel` in `read-phasing.html`, and `parseReads`,
-`linkMatrix`, `greedyCut`, `bestCut`, `runHiC`, `exactHiC`, `buildModel` in `hic-phasing.html`) free of DOM access
+`linkMatrix`, `greedyCut`, `bestCut`, `runHiC`, `exactHiC`, `buildModel` in `hic-phasing.html`, and `parseMSA`,
+`compareRows`, `distMatrix`, `upgma`, `treeDist`, `newick`, `buildModel` in `upgma.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture

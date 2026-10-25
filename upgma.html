@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UPGMA from a Multiple Alignment</title>
+<style>
+  :root {
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --node: #1e6fd9; --nodebg: #d6e6fb;
+    --src: #d0731a; --srcbg: #fbe6d2;
+    --pr: #7b3fa0; --prbg: #ece0f5;
+    --err: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; box-sizing: border-box; }
+  textarea { width: 26em; height: 10em; resize: vertical; display: block; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 6px; line-height: 1.45; }
+  .err { color: var(--err); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .lblk { display: block; font-size: .9rem; color: #444; margin: 8px 0 3px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 44px; align-items: flex-start; }
+  .top > div:first-child { flex: 0 0 auto; max-width: 560px; }
+  .top > div:last-child { flex: 1 1 420px; max-width: 700px; }
+  .top .controls { margin: 10px 0 0; }
+  .inrow { display: flex; gap: 12px; align-items: flex-start; }
+  .inrow textarea { min-width: 0; }
+  .exbtns { display: flex; flex-direction: column; gap: 8px; }
+  .model { font-size: .9rem; line-height: 1.55; }
+  .model p { margin: 6px 0; }
+  .algo { margin: 4px 0 0; padding-left: 1.8em; }
+  .algo li { padding: 1px 6px; border-radius: 3px; }
+  .algo li.on { background: var(--curbg); font-weight: 600; }
+  .stepc { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ddd; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  [hidden] { display: none !important; }
+  .views { display: flex; flex-wrap: wrap; gap: 4px 48px; align-items: flex-start; }
+  .views > div { max-width: 100%; }
+
+  /* alignment */
+  #aln { overflow-x: auto; }
+  .aln { font: 600 15px/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre; letter-spacing: .06em; }
+  .aln .row { padding: 0 6px 0 4px; border-radius: 3px; width: max-content; }
+  .aln .nm { display: inline-block; letter-spacing: 0; color: #555; font-family: system-ui, sans-serif; font-size: .85em; }
+  .aln .rul { color: #aaa; font-weight: 400; }
+  .aln .g { color: #aaa; font-weight: 400; }
+  .aln .row.rel { background: var(--curbg); }
+  .aln .row.dim { opacity: .3; }
+  .aln .row.cx { background: var(--prbg); }
+  .aln .row.cy { background: #d9efed; }
+  .aln .df { background: #f8c9c9; color: var(--err); border-radius: 2px; }
+  .aln .sk { background: #e6e6e6; color: #aaa; border-radius: 2px; }
+
+  /* tree */
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .br { fill: none; stroke: #555; stroke-width: 1.6; }
+  .br.cur { stroke: var(--cur); stroke-width: 3; }
+  .nd { cursor: pointer; }
+  .nd circle { fill: var(--nodebg); stroke: var(--node); stroke-width: 1.5; }
+  .nd.cur circle { fill: var(--curbg); stroke: var(--cur); stroke-width: 2.5; }
+  .nd text { font: 700 10px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; fill: var(--node); pointer-events: none; }
+  .nd.cur text { fill: var(--curtx); }
+  .nh { font: 10px system-ui, sans-serif; fill: #777; text-anchor: end; }
+  .lf { font: 600 13px system-ui, sans-serif; fill: #222; dominant-baseline: central; }
+  .lf.in { fill: var(--curtx); }
+  .lfd { fill: #555; }
+  .ax { stroke: #999; stroke-width: 1; }
+  .axt { font: 10px system-ui, sans-serif; fill: #777; text-anchor: middle; }
+
+  /* distance matrices */
+  .mats { display: flex; flex-wrap: wrap; gap: 10px 4px; align-items: center; overflow-x: auto; }
+  .mw { display: flex; align-items: center; gap: 4px; }
+  .mat { padding: 6px 8px 8px; border: 2px solid transparent; border-radius: 8px; }
+  .mat.cur { border-color: var(--cur); }
+  .mat.tbox { margin-left: 14px; }
+  .mat .cap { font-size: .85rem; color: #555; margin-bottom: 4px; }
+  .marr { color: #999; font-size: 1.4rem; }
+  table { border-collapse: collapse; font-size: .9rem; }
+  th, td { padding: 3px 8px; border-bottom: 1px solid #e3e3e3; text-align: right; white-space: nowrap; }
+  td { min-width: 2.4em; font-variant-numeric: tabular-nums; }
+  th { color: #555; font-weight: 600; }
+  thead th { border-bottom: 1.5px solid #bbb; }
+  tbody th { text-align: left; }
+  .hn { display: inline-block; max-width: 8em; white-space: normal; }
+  th.nw { color: var(--node); }
+  th.rel { background: var(--curbg); }
+  td.dg { color: #ccc; text-align: center; }
+  td.rel { background: #f7f1da; }
+  td.new { background: #e4eefb; color: var(--node); font-weight: 700; }
+  td.used { outline: 1.5px dashed var(--curtx); outline-offset: -3px; }
+  td.min { background: var(--curbg); outline: 2px solid var(--cur); outline-offset: -2px; font-weight: 700; }
+  td.over { background: #fbe0e0; }
+  td.under { background: #dcefdc; }
+  td.pr { background: var(--prbg); }
+  td.src { background: var(--srcbg); outline: 2px solid var(--src); outline-offset: -2px; }
+  td.hv { outline: 2px solid #333; outline-offset: -2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .85rem; margin: 6px 0 8px; color: #444; align-items: center; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1px solid #bbb; }
+</style>
+</head>
+<body>
+<h1>UPGMA: a tree from a multiple sequence alignment</h1>
+
+<p class="hint">
+  UPGMA (unweighted pair group method with arithmetic mean) turns pairwise distances into a rooted tree. It computes the
+  distance between every two aligned sequences, then repeatedly joins the two closest clusters and replaces their rows in
+  the distance matrix by a single row of averages, so the matrix loses one row and one column per merge. Every matrix stays
+  on screen. Hover a distance to see where it comes from; click a tree node to jump to its merge.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>f</kbd> run all, <kbd>r</kbd> reset.
+</p>
+
+<div class="top">
+  <div>
+    <h2>1 Multiple sequence alignment</h2>
+    <label class="lblk" for="msa">One sequence per line: a name, then the aligned sequence (- = gap); FASTA also works</label>
+    <div class="inrow">
+      <div class="exbtns">
+        <button id="btnSix" title="Six sequences with nearly equal rates">Six</button>
+        <button id="btnGaps" title="Five sequences with insertions and deletions">Gaps</button>
+        <button id="btnClock" title="Four sequences, one of them evolving much faster">No clock</button>
+      </div>
+      <textarea id="msa" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+    </div>
+    <div id="exnote" class="note"></div>
+    <div class="controls">
+      <label>Distance <select id="selDist">
+        <option value="count">number of differences</option>
+        <option value="p">p-distance: proportion of differences</option>
+        <option value="jc">Jukes–Cantor</option>
+      </select></label>
+      <label>Gaps <select id="selGap">
+        <option value="skip">skip the column</option>
+        <option value="diff">count as a difference</option>
+      </select></label>
+    </div>
+    <div id="dnote" class="note"></div>
+    <div id="derr" class="err"></div>
+  </div>
+  <div class="model">
+    <h2>2 Algorithm</h2>
+    <ol class="algo" id="algo">
+      <li>Compute the distance between every pair of sequences from the alignment; each sequence is a cluster of its own</li>
+      <li>Find the two closest clusters A and B and join them under a new node at height d(A,B)/2</li>
+      <li>Replace A and B in the matrix by their union A∪B, with d(A∪B, X) = (|A|·d(A,X) + |B|·d(B,X)) / (|A| + |B|)
+        for every other cluster X; go back to step 2 until one cluster is left</li>
+    </ol>
+    <p>|A| is the number of sequences in A. With these weights d(A∪B, X) is the plain average of d(a, x) over all
+      sequences a in A∪B and x in X. Every sequence ends at height 0, so the tree is ultrametric: UPGMA assumes that all
+      lineages evolve at the same rate (a molecular clock).</p>
+  </div>
+</div>
+
+<div class="controls stepc">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+</div>
+
+<div class="views">
+  <div>
+    <h2>3 Alignment</h2>
+    <div id="aln"></div>
+  </div>
+  <div>
+    <h2>4 UPGMA tree</h2>
+    <div id="tree"></div>
+    <div id="treenote" class="note"></div>
+  </div>
+</div>
+
+<h2>5 Distance matrices</h2>
+<div class="legend">
+  <label><input type="checkbox" id="chkAll" checked autocomplete="off"> show earlier matrices</label>
+  <span><span class="box" style="background:var(--curbg);border:2px solid var(--cur)"></span>smallest distance: the pair joined</span>
+  <span><span class="box" style="background:#f7f1da"></span>rows of the two clusters</span>
+  <span><span class="box" style="background:#e4eefb"></span>distances of the new cluster</span>
+  <span><span class="box" style="border:1.5px dashed var(--curtx)"></span>pair joined earlier</span>
+  <span>hover: <span class="box" style="background:var(--srcbg);border:2px solid var(--src)"></span>entries it is computed from,
+    <span class="box" style="background:var(--prbg)"></span>sequence pairs it averages</span>
+</div>
+<div id="mats" class="mats"></div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const GAP = '-', EPS = 1e-9;
+  // Made-up alignments: each substitution falls on a site of its own along the stated tree.
+  const EXAMPLES = {
+    six: {
+      msa: 'A GAGTTCGGCTCTATAATAATCAACGACAGG\nB GAGTTCGGCTTTACCATAATCAACGACAGG\nC GAGTTCGGCTCTACAATACGCAAGGTCAGA\n' +
+        'D ACGTTCGTCTCCACAGCACTCTACGTCAGG\nE AAGTTCGTCACCACAGCACTCAACGTGAGG\nF GAATCCCTATCCACAGCACTCAACGTCAGG',
+      dist: 'count', gap: 'skip',
+      note: 'Made-up sequences evolved along the tree (((A,B),C),((D,E),F)) at nearly equal rates; UPGMA recovers this tree.',
+    },
+    gaps: {
+      msa: 's1 GAGTTCGGCTTCACAACAGACTCAAGTG\ns2 TAGTTCGGCGCCACAACA--TT-AACTG\ns3 --GTTCAGCTCCACAACC--CACATCGT\n' +
+        's4 GATTTCGGC---ACAACA--CAGAACGT\ns5 GATATCGGC---ACAACA--CAGGACGT',
+      dist: 'p', gap: 'skip',
+      note: 'Made-up sequences with indels: s3 lacks the first two columns, s4 and s5 share a deletion, s1 has an insertion ' +
+        'and s2 a one-base deletion. With gaps skipped, pairs compare different numbers of columns, so the distance is a proportion.',
+    },
+    clock: {
+      msa: 'A GAGTTCGGATACACAACACT\nB GTGTTCGGATCCGAGCCGGA\nC GAGTTCCGCTCCACAAGACT\nD GATTTCCGCTCCACAACACT',
+      dist: 'count', gap: 'skip',
+      note: 'Made-up sequences evolved along the tree ((A,B),(C,D)), where B’s own branch carries 8 substitutions and every other ' +
+        'branch 1. Without a molecular clock, UPGMA joins A with C and D instead of B, and the tree distances at the end miss the data.',
+    },
+  };
+
+  // ---------- pure model ----------
+  const MAXN = 10, MAXL = 120, MAXNAME = 10;
+  const autoName = t => String.fromCharCode(65 + t);
+  // "name sequence" per line (the sequence may contain spaces), bare sequences named A, B, … from the top, or FASTA.
+  function parseMSA(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l), names = [], seqs = [];
+    if (!lines.length) return { error: 'Enter an alignment, one sequence per line.' };
+    if (lines.some(l => l[0] === '>')) {
+      if (lines[0][0] !== '>') return { error: 'FASTA: the first line must be a header starting with >.' };
+      for (const l of lines) {
+        if (l[0] === '>') { names.push(l.slice(1).trim().split(/\s+/)[0]); seqs.push(''); }
+        else seqs[seqs.length - 1] += l.replace(/\s+/g, '');
+      }
+    } else {
+      const tok = lines.map(l => l.split(/\s+/)), named = tok.some(t => t.length > 1);
+      for (let i = 0; i < tok.length; i++) {
+        if (named && tok[i].length < 2) return { error: `Line ${i + 1} has only one word; give every line a name and a sequence, or no line a name.` };
+        names.push(named ? tok[i][0] : '');
+        seqs.push((named ? tok[i].slice(1) : tok[i]).join(''));
+      }
+    }
+    const n = seqs.length;
+    if (n < 2) return { error: 'Enter at least two sequences.' };
+    if (n > MAXN) return { error: `At most ${MAXN} sequences.` };
+    const seen = new Set();
+    for (let t = 0; t < n; t++) {
+      if (!names[t]) names[t] = autoName(t);
+      if (names[t].length > MAXNAME) return { error: `The name “${names[t]}” is longer than ${MAXNAME} characters.` };
+      if (seen.has(names[t])) return { error: `The name “${names[t]}” is used twice.` };
+      seen.add(names[t]);
+      seqs[t] = seqs[t].toUpperCase().replace(/\./g, GAP);
+      if (!seqs[t]) return { error: `${names[t]} has no sequence.` };
+      const bad = seqs[t].match(/[^A-Z-]/);
+      if (bad) return { error: `${names[t]} contains “${bad[0]}”; use letters, and - for a gap.` };
+      if (seqs[t].length !== seqs[0].length) return { error: `${names[t]} has ${seqs[t].length} columns but ${names[0]} has ${seqs[0].length}; all rows of an alignment have the same length.` };
+    }
+    if (seqs[0].length > MAXL) return { error: `At most ${MAXL} columns.` };
+    return { names, seqs };
+  }
+
+  // Compare two aligned rows column by column. A column with a gap in both rows is never compared; a gap against a
+  // residue is skipped or counted as a difference (gapDiff). nd = differing columns, nc = compared columns.
+  function compareRows(x, y, gapDiff) {
+    const diff = [], skip = [];
+    for (let c = 0; c < x.length; c++) {
+      const gx = x[c] === GAP, gy = y[c] === GAP;
+      if (gx && gy || (gx || gy) && !gapDiff) skip.push(c);
+      else if (x[c] !== y[c]) diff.push(c);
+    }
+    return { diff, skip, nd: diff.length, nc: x.length - skip.length };
+  }
+  function distance(nd, nc, kind) {
+    if (kind === 'count') return nd;
+    const p = nd / nc;
+    return kind === 'p' ? p : -0.75 * Math.log(1 - 4 * p / 3);
+  }
+  function distMatrix(names, seqs, opt) {
+    const n = seqs.length, D = seqs.map(() => new Array(n).fill(0)), cmp = seqs.map(() => new Array(n).fill(null));
+    for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+      const r = compareRows(seqs[a], seqs[b], opt.gap === 'diff');
+      if (!r.nc) return { error: `${names[a]} and ${names[b]} have no column to compare.` };
+      if (opt.dist === 'jc' && r.nd / r.nc >= 0.75) return { error: `${names[a]} and ${names[b]} differ at ${r.nd} of ${r.nc} columns; for p ≥ 0.75 the Jukes–Cantor distance is infinite.` };
+      cmp[a][b] = cmp[b][a] = r;
+      D[a][b] = D[b][a] = distance(r.nd, r.nc, opt.dist);
+    }
+    return { D, cmp };
+  }
+
+  // UPGMA on the distance matrix D, as in msa.html. Nodes 0..n-1 are the sequences and merge k creates node n+k at
+  // height d/2. The matrix keeps one slot per cluster: the new cluster takes the lower slot ia of the pair and slot ib
+  // is removed, so keep[q] is the slot before the merge of slot q after it. Ties go to the first pair in row-major
+  // order; ties lists the other pairs at the minimum. Each merge records the matrix before and after it.
+  function upgma(D) {
+    const n = D.length, nodes = [], merges = [];
+    for (let t = 0; t < n; t++) nodes.push({ id: t, members: [t], size: 1, height: 0 });
+    let ids = nodes.map(nd => nd.id), mat = D.map(r => r.slice());
+    while (ids.length > 1) {
+      let ia = 0, ib = 1;
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++)
+        if (mat[a][b] < mat[ia][ib] - EPS) { ia = a; ib = b; }
+      const ties = [];
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++)
+        if ((a !== ia || b !== ib) && Math.abs(mat[a][b] - mat[ia][ib]) <= EPS) ties.push([ids[a], ids[b]]);
+      const A = nodes[ids[ia]], B = nodes[ids[ib]], d = mat[ia][ib];
+      const node = { id: nodes.length, left: A.id, right: B.id, members: [...A.members, ...B.members], size: A.size + B.size, height: d / 2, d };
+      nodes.push(node);
+      const row = ids.map((_, c) => (A.size * mat[ia][c] + B.size * mat[ib][c]) / node.size);
+      const keep = ids.map((_, c) => c).filter(c => c !== ib);
+      const nids = keep.map(c => c === ia ? node.id : ids[c]);
+      const nmat = keep.map(r => keep.map(c => r === c ? 0 : r === ia ? row[c] : c === ia ? row[r] : mat[r][c]));
+      merges.push({ a: A.id, b: B.id, ia, ib, d, ties, node: node.id, row, keep, before: { ids, mat }, after: { ids: nids, mat: nmat } });
+      ids = nids; mat = nmat;
+    }
+    return { nodes, merges };
+  }
+
+  // Tree distance between two sequences: twice the height of their lowest common ancestor (lca).
+  function treeDist(nodes, n) {
+    const T = Array.from({ length: n }, () => new Array(n).fill(0)), lca = Array.from({ length: n }, () => new Array(n).fill(-1));
+    for (let id = n; id < nodes.length; id++) {
+      const nd = nodes[id];
+      for (const x of nodes[nd.left].members) for (const y of nodes[nd.right].members) {
+        T[x][y] = T[y][x] = 2 * nd.height;
+        lca[x][y] = lca[y][x] = id;
+      }
+    }
+    return { T, lca };
+  }
+  // Branch lengths are height differences.
+  function newick(nodes, names) {
+    const n = names.length, num = x => String(+x.toFixed(4));
+    const sub = (id, h) => (id < n ? names[id] : `(${sub(nodes[id].left, nodes[id].height)},${sub(nodes[id].right, nodes[id].height)})`) + ':' + num(h - nodes[id].height);
+    const root = nodes[nodes.length - 1];
+    return `(${sub(root.left, root.height)},${sub(root.right, root.height)});`;
+  }
+
+  // Steps: start (D_0), then per merge k a join (box the minimum of D_k, add the node) and an update (D_{k+1}),
+  // except that the last join leaves a single cluster and needs no update; then done (tree distances).
+  function buildModel(text, opt) {
+    const A = parseMSA(text); if (A.error) return A;
+    const { names, seqs } = A, n = seqs.length;
+    const R = distMatrix(names, seqs, opt); if (R.error) return R;
+    const { nodes, merges } = upgma(R.D), { T, lca } = treeDist(nodes, n);
+    const mats = [merges[0].before, ...merges.slice(0, -1).map(mg => mg.after)];
+    const steps = [{ kind: 'start' }];
+    merges.forEach((_, k) => { steps.push({ kind: 'join', k }); if (k < n - 2) steps.push({ kind: 'update', k }); });
+    steps.push({ kind: 'done' });
+    return { names, seqs, n, L: seqs[0].length, opt, D: R.D, cmp: R.cmp, nodes, merges, mats, T, lca, steps, newick: newick(nodes, names) };
+  }
+
+  // ---------- state ----------
+  let M = null, s = 0;
+  const DEFAULTS = { selDist: 'count', selGap: 'skip' };
+  function rebuild() {
+    M = buildModel($('msa').value, { dist: $('selDist').value, gap: $('selGap').value });
+    s = 0;
+    render();
+  }
+  function load(key) {
+    const ex = EXAMPLES[key];
+    $('msa').value = ex.msa; $('selDist').value = ex.dist; $('selGap').value = ex.gap;
+    rebuild();
+  }
+  const S = () => M.error ? 0 : M.steps.length - 1;
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); render(); };
+  // Counts stay short decimals (6.5, 10.33); proportions and Jukes–Cantor distances get three decimals.
+  const fmt = x => M.opt.dist === 'count' ? String(+x.toFixed(2)) : x.toFixed(3);
+  // Cluster names: AB for one-letter names, {s1,s2} otherwise; members in input order. wrap allows line breaks
+  // after the commas, for table headers.
+  function cname(id, wrap) {
+    if (id < M.n) return esc(M.names[id]);
+    const mem = M.nodes[id].members.slice().sort((x, y) => x - y).map(t => esc(M.names[t]));
+    return M.names.every(x => x.length === 1) ? mem.join('') : '{' + mem.join(wrap ? ',<wbr>' : ',') + '}';
+  }
+  const dn = (x, y) => `d(${cname(x)}, ${cname(y)})`;
+  const Dk = k => `D<sub>${k}</sub>`;
+  const plural = (v, w) => `${v} ${w}${v === 1 ? '' : 's'}`;
+  const joinsDone = st => st.kind === 'start' ? 0 : st.kind === 'done' ? M.n - 1 : st.k + 1;
+  const curMerge = st => st.kind === 'join' || st.kind === 'update' ? st.k : -1;
+
+  // ---------- rendering ----------
+  function ruler(L) {
+    const r = new Array(L).fill(' ');
+    r[0] = '1';
+    for (let c = 10; c <= L; c += 10) { const t = String(c); for (let i = 0; i < t.length; i++) r[c - t.length + i] = t[i]; }
+    return r.join('');
+  }
+  // hl: null (rows of the clusters being joined are shaded), {pair: [a, b]} (the columns that differ, red, and the
+  // skipped ones, grey) or {X, Y} (the members of two clusters).
+  function renderAln(hl) {
+    const { names, seqs, n, L } = M, st = M.steps[s], ck = curMerge(st);
+    const join = ck >= 0 ? new Set(M.nodes[M.merges[ck].node].members) : new Set();
+    const cmp = hl && hl.pair ? M.cmp[hl.pair[0]][hl.pair[1]] : null;
+    const diff = new Set(cmp ? cmp.diff : []), skip = new Set(cmp ? cmp.skip : []);
+    const nw = `${Math.max(...names.map(x => x.length)) + 1.5}ch`;
+    let o = `<div class="aln"><div class="row rul"><span class="nm" style="width:${nw}"></span>${ruler(L)}</div>`;
+    for (let t = 0; t < n; t++) {
+      let rc = '';
+      if (hl && hl.pair) rc = hl.pair.includes(t) ? '' : ' dim';
+      else if (hl) rc = hl.X.includes(t) ? ' cx' : hl.Y.includes(t) ? ' cy' : ' dim';
+      else if (join.has(t)) rc = ' rel';
+      const on = cmp && hl.pair.includes(t);
+      let line = '';
+      for (let c = 0; c < L; c++) {
+        const ch = seqs[t][c], cls = (ch === GAP ? 'g ' : '') + (on && diff.has(c) ? 'df' : on && skip.has(c) ? 'sk' : '');
+        line += cls ? `<span class="${cls.trim()}">${ch}</span>` : ch;
+      }
+      o += `<div class="row${rc}"><span class="nm" style="width:${nw}">${esc(names[t])}</span>${line}</div>`;
+    }
+    $('aln').innerHTML = o + '</div>';
+  }
+
+  function ticks(H) {
+    const raw = H / 4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    const st = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p, out = [];
+    for (let t = 0; t <= H + 1e-9; t += st) out.push(+t.toFixed(10));
+    return out;
+  }
+  // Root on the left, sequences on the right at height 0; x is proportional to height and the leaf order comes from
+  // the final tree, so nothing moves while the tree grows.
+  function renderTree() {
+    const { n, nodes } = M, root = nodes.length - 1, st = M.steps[s], nj = joinsDone(st), ck = curMerge(st);
+    const order = [];
+    (function walk(id) { if (id < n) order.push(id); else { walk(nodes[id].left); walk(nodes[id].right); } })(root);
+    const RH = 28, TOP = 16, X0 = 52, WT = 270, H = nodes[root].height || 1;
+    const x = id => X0 + (1 - nodes[id].height / H) * WT, y = [];
+    order.forEach((id, t) => { y[id] = TOP + t * RH; });
+    for (let id = n; id < nodes.length; id++) y[id] = (y[nodes[id].left] + y[nodes[id].right]) / 2;
+    const cur = ck >= 0 ? n + ck : -1, inCur = new Set(cur >= 0 ? nodes[cur].members : []);
+    const yAx = TOP + (n - 1) * RH + 22, W = X0 + WT + 22 + 8.5 * Math.max(...M.names.map(q => q.length)), Ht = yAx + 30;
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Ht}" viewBox="0 0 ${W} ${Ht}">`;
+    o += `<line class="ax" x1="${X0}" y1="${yAx}" x2="${X0 + WT}" y2="${yAx}"/>`;
+    for (const t of ticks(H)) {
+      const xt = X0 + (1 - t / H) * WT;
+      o += `<line class="ax" x1="${xt}" y1="${yAx}" x2="${xt}" y2="${yAx + 4}"/><text class="axt" x="${xt}" y="${yAx + 15}">${+t.toFixed(6)}</text>`;
+    }
+    o += `<text class="axt" x="${X0 - 8}" y="${yAx + 4}" style="text-anchor:end">height</text>`;
+    for (let k = 0; k < nj; k++) {
+      const nd = nodes[n + k];
+      o += `<path class="br${n + k === cur ? ' cur' : ''}" d="M${x(nd.left)},${y[nd.left]} H${x(n + k)} V${y[nd.right]} H${x(nd.right)}"/>`;
+    }
+    for (const id of order)
+      o += `<circle class="lfd" cx="${x(id)}" cy="${y[id]}" r="3"/><text class="lf${inCur.has(id) ? ' in' : ''}" x="${x(id) + 8}" y="${y[id]}">${esc(M.names[id])}</text>`;
+    for (let k = 0; k < nj; k++) {
+      const id = n + k;
+      o += `<text class="nh" x="${x(id) - 13}" y="${y[id] - 7}">${fmt(nodes[id].height)}</text>` +
+        `<g class="nd${id === cur ? ' cur' : ''}" data-k="${k}"><circle cx="${x(id)}" cy="${y[id]}" r="10"/><text x="${x(id)}" y="${y[id]}">${k + 1}</text></g>`;
+    }
+    $('tree').innerHTML = o + '</svg>';
+    $('treenote').innerHTML = nj ? 'Circles: the merge that created the node; beside it, its height d/2. Hover a node for its branch lengths.' :
+      'No node yet: every sequence is its own cluster at height 0.';
+  }
+
+  // Matrix D_mi. Its closest pair (merge mi) is boxed once joined; while merge mi is current, the rows of the pair
+  // are shaded, and during update k the new row of D_{k+1} is blue.
+  function matBox(mi, st, isCurBox) {
+    const t = M.mats[mi], mg = M.merges[mi], prev = mi ? M.merges[mi - 1] : null, ck = curMerge(st);
+    const joined = mi < joinsDone(st), isCur = mi === ck, newSlot = prev ? prev.ia : -1, showNew = st.kind === 'update' && mi === ck + 1;
+    const pairRC = q => isCur && (q === mg.ia || q === mg.ib);
+    const hcls = q => [q === newSlot ? 'nw' : '', pairRC(q) ? 'rel' : ''].join(' ').trim();
+    const cap = mi ? `${Dk(mi)}: ${cname(prev.a, true)} and ${cname(prev.b, true)} become ${cname(prev.node, true)}` : `${Dk(0)}: the ${M.n} sequences`;
+    const hd = id => `<span class="hn">${cname(id, true)}</span>`;
+    let o = `<div class="mat${isCurBox ? ' cur' : ''}"><div class="cap">${cap}</div><table><thead><tr><th></th>`;
+    t.ids.forEach((id, q) => { o += `<th class="${hcls(q)}">${hd(id)}</th>`; });
+    o += '</tr></thead><tbody>';
+    t.ids.forEach((id, r) => {
+      o += `<tr><th class="${hcls(r)}">${hd(id)}</th>`;
+      t.ids.forEach((_, c) => {
+        if (r === c) { o += '<td class="dg">–</td>'; return; }
+        const cls = [];
+        if (pairRC(r) || pairRC(c)) cls.push('rel');
+        if (showNew && (r === newSlot || c === newSlot)) cls.push('new');
+        if (joined && (r === mg.ia && c === mg.ib || r === mg.ib && c === mg.ia)) cls.push(isCur ? 'min' : 'used');
+        o += `<td class="${cls.join(' ')}" data-m="${mi}" data-r="${r}" data-c="${c}">${fmt(t.mat[r][c])}</td>`;
+      });
+      o += '</tr>';
+    });
+    return o + '</tbody></table></div>';
+  }
+  function treeBox() {
+    const n = M.n;
+    let o = '<div class="mat cur tbox"><div class="cap">Tree distances: 2 × height of the lowest common ancestor</div><table><thead><tr><th></th>';
+    for (let b = 0; b < n; b++) o += `<th>${cname(b)}</th>`;
+    o += '</tr></thead><tbody>';
+    for (let a = 0; a < n; a++) {
+      o += `<tr><th>${cname(a)}</th>`;
+      for (let b = 0; b < n; b++) {
+        if (a === b) { o += '<td class="dg">–</td>'; continue; }
+        const v = M.T[a][b], d = M.D[a][b], cls = v > d + EPS ? 'over' : v < d - EPS ? 'under' : '';
+        o += `<td class="${cls}" data-m="T" data-r="${a}" data-c="${b}">${fmt(v)}</td>`;
+      }
+      o += '</tr>';
+    }
+    return o + '</tbody></table></div>';
+  }
+  function renderMats() {
+    const st = M.steps[s], all = $('chkAll').checked;
+    const hi = st.kind === 'start' ? 0 : st.kind === 'join' ? st.k : st.kind === 'update' ? st.k + 1 : M.mats.length - 1;
+    let show = [];
+    if (all) for (let mi = 0; mi <= hi; mi++) show.push(mi);
+    else show = st.kind === 'update' ? [st.k, st.k + 1] : st.kind === 'done' ? [0] : [hi];
+    let o = '';
+    // each arrow stays with the matrix it points to when the row wraps
+    show.forEach((mi, j) => { o += `<div class="mw">${j ? '<div class="marr">→</div>' : ''}${matBox(mi, st, st.kind !== 'done' && mi === hi)}</div>`; });
+    if (st.kind === 'done') o += treeBox();
+    $('mats').innerHTML = o;
+  }
+
+  // ---------- explanations ----------
+  function distText() {
+    const o = M.opt;
+    let t = o.dist === 'count' ? 'the number of alignment columns where they differ' :
+      o.dist === 'p' ? 'the proportion p of compared columns where they differ' :
+      'the Jukes–Cantor distance d = −¾ ln(1 − 4p/3), where p is the proportion of compared columns where they differ (the log corrects for several substitutions at one site)';
+    return t + (o.gap === 'skip' ? '; a column with a gap in either sequence is not compared' : '; a gap against a residue counts as a difference and a column with gaps in both is not compared');
+  }
+  function explainPair(a, b) {
+    const r = M.cmp[a][b], A = cname(a), B = cname(b), o = M.opt, sk = r.skip.length;
+    let t = `<b>d(${A}, ${B})</b>: the two sequences differ at <b>${r.nd}</b> of ${plural(r.nc, 'compared column')} (red in the alignment)`;
+    if (o.gap === 'diff') {
+      const ng = r.diff.filter(c => M.seqs[a][c] === GAP || M.seqs[b][c] === GAP).length;
+      if (ng) t += `, ${ng} of them a gap against a residue`;
+    }
+    if (sk) t += `; ${plural(sk, 'column')} with ${o.gap === 'skip' ? 'a gap' : 'gaps in both'} ${sk === 1 ? 'is' : 'are'} skipped (grey)`;
+    if (o.dist === 'count') return t + `, so d = <b>${r.nd}</b>.`;
+    const p = r.nd / r.nc;
+    return t + `, so p = ${r.nd}/${r.nc} = ${p.toFixed(3)}` + (o.dist === 'p' ? ' = d.' : ` and d = −¾ ln(1 − 4p/3) = <b>${fmt(M.D[a][b])}</b>.`);
+  }
+  // The sequence pairs averaged by d(X, Y), written out when there are few.
+  function pairAvg(X, Y) {
+    const prs = [];
+    for (const x of M.nodes[X].members) for (const y of M.nodes[Y].members) prs.push(M.D[x][y]);
+    if (prs.length === 1) return '';
+    const mean = prs.reduce((u, v) => u + v, 0) / prs.length;
+    return ` It is the average over the ${prs.length} pairs of sequences with one in each cluster (purple in ${Dk(0)})` +
+      (prs.length <= 9 ? `: (${prs.map(fmt).join(' + ')}) / ${prs.length} = ${fmt(mean)}.` : `, ${fmt(mean)}.`);
+  }
+  function explainCell(mi, r, c) {
+    const t = M.mats[mi], X = t.ids[r], Y = t.ids[c], v = t.mat[r][c], mg = M.merges[mi - 1];
+    let o;
+    if (r === mg.ia || c === mg.ia) {
+      const Z = r === mg.ia ? Y : X, q = mg.keep[r === mg.ia ? c : r], bm = mg.before.mat, A = M.nodes[mg.a], B = M.nodes[mg.b];
+      o = `<b>${dn(mg.node, Z)}</b> = (${A.size}·${dn(A.id, Z)} + ${B.size}·${dn(B.id, Z)}) / ${A.size + B.size} = ` +
+        `(${A.size}·${fmt(bm[mg.ia][q])} + ${B.size}·${fmt(bm[mg.ib][q])}) / ${A.size + B.size} = <b>${fmt(v)}</b>, from rows ${cname(A.id)} and ${cname(B.id)} of ${Dk(mi - 1)} (orange).`;
+    } else o = `<b>${dn(X, Y)} = ${fmt(v)}</b>, copied unchanged from ${Dk(mi - 1)} (orange): neither cluster took part in merge ${mi}.`;
+    return o + pairAvg(X, Y);
+  }
+  function explainTree(a, b) {
+    const id = M.lca[a][b], h = M.nodes[id].height, v = M.T[a][b], d = M.D[a][b];
+    return `<b>Tree distance between ${cname(a)} and ${cname(b)}</b>: their lowest common ancestor is node ${id - M.n + 1} (${cname(id)}) at height ${fmt(h)}, ` +
+      `so the tree puts them 2 × ${fmt(h)} = <b>${fmt(v)}</b> apart. From the alignment, d = ${fmt(d)} (orange in ${Dk(0)})` +
+      (Math.abs(v - d) <= EPS ? ', the same.' : `: the tree ${v > d ? 'over' : 'under'}estimates it by ${fmt(Math.abs(v - d))}.`);
+  }
+  function explainNode(k) {
+    const id = M.n + k, nd = M.nodes[id], L = M.nodes[nd.left], R = M.nodes[nd.right];
+    return `<b>Node ${k + 1}</b> (${cname(id)}), made by merge ${k + 1}: ${dn(L.id, R.id)} = ${fmt(nd.d)}, so its height is ${fmt(nd.d)}/2 = ${fmt(nd.height)}. ` +
+      `Branch to ${cname(L.id)}: ${fmt(nd.height)} − ${fmt(L.height)} = ${fmt(nd.height - L.height)}; to ${cname(R.id)}: ${fmt(nd.height)} − ${fmt(R.height)} = ${fmt(nd.height - R.height)}. Click to jump to this merge.`;
+  }
+  function explainStep() {
+    const st = M.steps[s], n = M.n, N = n * (n - 1) / 2;
+    if (st.kind === 'start') {
+      return `<b>Step 1:</b> the distance between two sequences is ${distText()}. Each of the ${n} sequences starts as a cluster of its own, ` +
+        `and ${Dk(0)} holds all ${N} distances (it is symmetric, so every value appears twice). Hover an entry to see the two sequences compared in the alignment.`;
+    }
+    if (st.kind === 'done') {
+      const root = M.nodes[M.nodes.length - 1], diffs = [];
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) if (Math.abs(M.T[a][b] - M.D[a][b]) > EPS) diffs.push([a, b, Math.abs(M.T[a][b] - M.D[a][b])]);
+      let o = `<b>Done.</b> In Newick format the tree is <span class="mono">${esc(M.newick)}</span> All sequences sit at height 0 and the root at ${fmt(root.height)}: ` +
+        `UPGMA always builds an ultrametric tree, as if every lineage evolved at the same rate. The last matrix lists the distances the tree implies, twice the height of the lowest common ancestor. `;
+      if (!diffs.length) return o + `They equal the alignment distances for all ${N} pairs: the distances are ultrametric, which is exactly the case where UPGMA reproduces them.`;
+      const w = diffs.reduce((u, v) => v[2] > u[2] + EPS ? v : u);
+      return o + `They differ from the alignment distances for ${diffs.length} of ${N} pairs (red: tree larger, green: tree smaller), by up to ${fmt(w[2])} for ${cname(w[0])} and ${cname(w[1])}. ` +
+        'The distances do not fit a molecular clock exactly, so the tree can only average them. Hover an entry to compare.';
+    }
+    const mg = M.merges[st.k], A = M.nodes[mg.a], B = M.nodes[mg.b], C = M.nodes[mg.node], head = `<b>Merge ${st.k + 1} of ${n - 1}, step ${st.kind === 'join' ? 2 : 3}:</b> `;
+    if (st.kind === 'join') {
+      let o = head + `the smallest entry of ${Dk(st.k)} is ${dn(A.id, B.id)} = <b>${fmt(mg.d)}</b>`;
+      if (mg.ties.length) o += ` (tied with ${mg.ties.map(([x, y]) => dn(x, y)).join(', ')}; the first in row order is taken)`;
+      o += `. Join ${cname(A.id)} and ${cname(B.id)} into ${cname(C.id)} under node ${st.k + 1} at height ${fmt(mg.d)}/2 = <b>${fmt(C.height)}</b>. ` +
+        `Branch lengths are height differences: ${cname(A.id)} ${fmt(C.height - A.height)}, ${cname(B.id)} ${fmt(C.height - B.height)}, so every sequence below the node is ${fmt(C.height)} from it.`;
+      if (st.k === n - 2) o += ' These were the last two clusters: the node is the root and the tree is complete.';
+      return o;
+    }
+    const bm = mg.before.mat, others = mg.before.ids.map((_, q) => q).filter(q => q !== mg.ia && q !== mg.ib);
+    return head + `replace ${cname(A.id)} and ${cname(B.id)} (shaded in ${Dk(st.k)}) by ${cname(C.id)} (blue in ${Dk(st.k + 1)}). Its distance to each other cluster X is the average of their rows, ` +
+      `weighted by cluster size: d(${cname(C.id)}, X) = (${A.size}·d(${cname(A.id)}, X) + ${B.size}·d(${cname(B.id)}, X)) / ${C.size}. ` +
+      others.map(q => `${dn(C.id, mg.before.ids[q])} = (${A.size}·${fmt(bm[mg.ia][q])} + ${B.size}·${fmt(bm[mg.ib][q])}) / ${C.size} = <b>${fmt(mg.row[q])}</b>`).join('; ') +
+      '. All other entries are copied. The weights make every entry the plain average over all pairs of sequences across the two clusters; hover an entry to check.';
+  }
+  function showExplainDefault() {
+    $('explain').innerHTML = M.error ? `<span class="err">${esc(M.error)}</span>` : explainStep();
+  }
+  function renderStatus() {
+    const st = M.steps[s], nj = joinsDone(st);
+    $('status').innerHTML = `Step <b>${s}</b> / ${S()} · ${M.n} sequences × ${M.L} columns · ${nj} of ${M.n - 1} merges · ` +
+      (st.kind === 'done' ? 'tree complete' : `${M.n - nj} cluster${M.n - nj === 1 ? '' : 's'}`);
+  }
+
+  function render() {
+    $('derr').textContent = M.error || '';
+    const ex = Object.values(EXAMPLES).find(e => e.msa === $('msa').value);
+    $('exnote').textContent = ex ? ex.note : '';
+    const uneven = !M.error && M.opt.dist === 'count' && M.cmp.some(row => row.some(r => r && r.nc < M.L));
+    $('dnote').textContent = uneven ? 'Some pairs compare fewer columns than others, so their counts are not on the same scale; the p-distance divides by the number of columns compared.' : '';
+    document.querySelectorAll('#algo li').forEach((li, j) => li.classList.toggle('on', !M.error && j === { start: 0, join: 1, update: 2 }[M.steps[s].kind]));
+    if (M.error) {
+      for (const id of ['aln', 'tree', 'treenote', 'mats', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    renderAln(null); renderTree(); renderMats(); renderStatus(); showExplainDefault();
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------- events ----------
+  // Hover marks cells by toggling classes on the existing table, so the hovered cell is never replaced.
+  function mark(m, r, c, cls) {
+    for (const [x, y] of [[r, c], [c, r]]) {
+      const td = $('mats').querySelector(`td[data-m="${m}"][data-r="${x}"][data-c="${y}"]`);
+      if (td) td.classList.add(cls);
+    }
+  }
+  function clearHover() {
+    for (const td of $('mats').querySelectorAll('td.hv, td.src, td.pr')) td.classList.remove('hv', 'src', 'pr');
+  }
+  function hoverCell(m, r, c) {
+    clearHover();
+    mark(m, r, c, 'hv');
+    if (r > c) [r, c] = [c, r];   // the matrices are symmetric; name the upper-left cluster first
+    if (m === 'T') { mark(0, r, c, 'src'); renderAln({ pair: [r, c] }); $('explain').innerHTML = explainTree(r, c); return; }
+    const mi = +m, t = M.mats[mi], X = t.ids[r], Y = t.ids[c];
+    if (!mi) { renderAln({ pair: [r, c] }); $('explain').innerHTML = explainPair(r, c); return; }
+    const mg = M.merges[mi - 1], pr = mg.keep[r], pc = mg.keep[c];
+    if (r === mg.ia || c === mg.ia) { const q = r === mg.ia ? pc : pr; mark(mi - 1, mg.ia, q, 'src'); mark(mi - 1, mg.ib, q, 'src'); }
+    else mark(mi - 1, pr, pc, 'src');
+    for (const x of M.nodes[X].members) for (const y of M.nodes[Y].members) mark(0, x, y, 'pr');
+    renderAln({ X: M.nodes[X].members, Y: M.nodes[Y].members });
+    $('explain').innerHTML = explainCell(mi, r, c);
+  }
+  function unhover() { clearHover(); renderAln(null); showExplainDefault(); }
+
+  $('mats').addEventListener('mouseover', e => {
+    const td = e.target.closest('td[data-m]');
+    if (td && !M.error) hoverCell(td.dataset.m, +td.dataset.r, +td.dataset.c);
+  });
+  $('mats').addEventListener('mouseout', e => { if (e.target.closest('td[data-m]')) unhover(); });
+  $('tree').addEventListener('mouseover', e => { const g = e.target.closest('g.nd'); if (g) $('explain').innerHTML = explainNode(+g.dataset.k); });
+  $('tree').addEventListener('mouseout', e => { if (e.target.closest('g.nd')) showExplainDefault(); });
+  $('tree').addEventListener('click', e => {
+    const g = e.target.closest('g.nd');
+    if (g) setS(M.steps.findIndex(st => st.kind === 'join' && st.k === +g.dataset.k));
+  });
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('btnSix').addEventListener('click', () => load('six'));
+  $('btnGaps').addEventListener('click', () => load('gaps'));
+  $('btnClock').addEventListener('click', () => load('clock'));
+  $('msa').addEventListener('input', rebuild);
+  for (const id of ['selDist', 'selGap']) $(id).addEventListener('change', rebuild);
+  $('chkAll').addEventListener('change', () => { if (!M.error) renderMats(); });
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the first example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  $('chkAll').checked = true;
+  load('six');
+})();
+</script>
+</body>
+</html>
