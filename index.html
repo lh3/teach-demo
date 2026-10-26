@@ -92,6 +92,11 @@ buttons or the arrow keys and watch every intermediate state.</p>
     <div class="desc">Turn an alignment into pairwise distances, then repeatedly join the two closest clusters and replace their rows by size-weighted averages. Every intermediate distance matrix stays on screen next to the growing tree, and hovering an entry shows the entries and sequence pairs it comes from. At the end, the distances implied by the tree are compared with the data to expose the molecular-clock assumption.</div>
     <div class="tags">distance matrix · average linkage · ultrametric tree · molecular clock</div>
   </a></li>
+  <li><a href="parsimony.html">
+    <span class="num">13</span><span class="name">Maximum parsimony: Fitch’s algorithm</span>
+    <div class="desc">Score a given tree on a 0/1 alignment. Step through Fitch’s bottom-up pass, which gives every internal node a set of states and counts the unions, and the top-down pass, which picks the states and places the mutations, or go one column at a time. Mutations are drawn on the tree edges, labelled with their column, and the reconstructed ancestors fill in under the alignment.</div>
+    <div class="tags">small parsimony · Fitch sets · ancestral states · informative columns</div>
+  </a></li>
 </ol>
 
 <footer>Source: <a href="https://github.com/lh3/teach-demo">github.com/lh3/teach-demo</a>. No external dependencies; each page also works when opened as a local file.</footer>

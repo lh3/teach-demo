@@ -89,6 +89,17 @@ working when opened as a local `file://` URL.
   matrix and on the averaged sequence pairs in D₀, and redraws the alignment (differing and skipped columns, or the
   two clusters' rows). Examples: Six (near-clock, recovers the tree), Gaps (p-distance) and No clock (a fast B, so
   UPGMA returns ((A,(C,D)),B) instead of ((A,B),(C,D))).
+- `parsimony.html`: Fitch (1971) on a given rooted binary tree with states 0/1; no tree search. One textarea:
+  "name 0101" lines, then the Newick tree (internal labels kept, branch lengths ignored, a node without exactly two
+  children is an error). Unlabelled internal nodes are "root", the clade (AB) for one-letter names, else u1, u2, … in
+  post-order. Sets are bit masks (1 = {0}, 2 = {1}, 3 = {0,1}); a root set {0,1} takes the state of the "pick" select.
+  Two step lists over the same model: detailed (per column, one 'up' step per internal node in post-order, then one
+  'down' step per internal node in pre-order that passes its state to both children; the root first picks its own)
+  and one step per column; switching keeps the column. Mutations are ticks across the edges in fixed slots taken from
+  the final `emut`, so nothing moves while stepping, labelled with the column; at the end the nodes become dots. The
+  alignment table adds the reconstructed ancestors (pre-order), red boxes where a node's state differs from its
+  parent's, and a cost row. Examples: Four (score 3), Other tree (same alignment on ((A,C),(B,D)), score 4) and Six
+  (constant, singleton and informative columns, root ties in columns 4, 6, 7 and 8).
 
 ## Developing and checking
 
@@ -117,7 +128,8 @@ Keep the model functions (`computeDP`, `computeWaves`, `buildSteps`, `buildIndex
 `viterbi`, `posteriorPath`, `phase`, `buildModel` in `li-stephens.html`, and `parseReads`, `parseHap`,
 `bestSigma`, `bestDelta`, `runRestarts`, `exactMEC`, `buildModel` in `read-phasing.html`, and `parseReads`,
 `linkMatrix`, `greedyCut`, `bestCut`, `runHiC`, `exactHiC`, `buildModel` in `hic-phasing.html`, and `parseMSA`,
-`compareRows`, `distMatrix`, `upgma`, `treeDist`, `newick`, `buildModel` in `upgma.html`) free of DOM access
+`compareRows`, `distMatrix`, `upgma`, `treeDist`, `newick`, `buildModel` in `upgma.html`, and `parseNewick`,
+`parseInput`, `fitchColumn`, `buildModel`, `buildSteps`, `layoutTree` in `parsimony.html`) free of DOM access
 so this extraction keeps working.
 
 ## Shared page architecture

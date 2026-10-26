@@ -21,6 +21,7 @@ action at a time.
 | `read-phasing.html` | Read-based phasing: minimum error correction (MEC) by alternating read and SNP phases |
 | `hic-phasing.html` | Hi-C phasing: greedy min-cut on the SNP graph, flip and repeat |
 | `upgma.html` | UPGMA from a multiple alignment: the distance matrix merge by merge, ultrametric tree |
+| `parsimony.html` | Maximum parsimony: Fitch's algorithm on a given tree, mutations on its edges |
 
 `index.html` only links to the pages above.
 

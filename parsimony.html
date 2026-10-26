@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maximum Parsimony with Fitch's Algorithm</title>
+<style>
+  :root {
+    --s0: #e8641b; --s0bg: #fcdcc6;
+    --s1: #1f6fd9; --s1bg: #d3e4fb;
+    --s01: #7b3fa0; --s01bg: #ece0f5;
+    --cur: #e6a800; --curbg: #fff3c4; --curtx: #b58200;
+    --err: #d62828;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0; padding: 16px 20px 32px; color: #222; background: #fff; max-width: 1300px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; color: #444; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 6px; }
+  textarea { font: inherit; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; padding: 4px 6px; box-sizing: border-box; }
+  textarea { width: 20em; height: 10em; resize: vertical; display: block; }
+  select { font: inherit; padding: 3px 4px; }
+  button { font: inherit; padding: 4px 12px; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .5; }
+  .hint { font-size: .9rem; color: #555; margin: 4px 0 10px; line-height: 1.5; }
+  kbd { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 4px; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { font-size: .85rem; color: #888; margin: 4px 0 6px; line-height: 1.45; }
+  .err { color: var(--err); font-weight: 600; font-size: .9rem; margin-top: 6px; }
+  .lblk { display: block; font-size: .9rem; color: #444; margin: 8px 0 3px; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 44px; align-items: flex-start; }
+  .top > div:first-child { flex: 0 0 auto; max-width: 480px; }
+  .top > div:last-child { flex: 1 1 420px; max-width: 760px; }
+  .inrow { display: flex; gap: 12px; align-items: flex-start; }
+  .inrow textarea { min-width: 0; }
+  .exbtns { display: flex; flex-direction: column; gap: 8px; }
+  .model { font-size: .9rem; line-height: 1.55; }
+  .model p { margin: 6px 0; }
+  .algo { margin: 4px 0 0; padding-left: 1.8em; }
+  .algo li { padding: 1px 6px; border-radius: 3px; }
+  .algo li.on { background: var(--curbg); }
+  .stepc { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ddd; }
+  #status { font-size: .9rem; color: #555; margin-top: 12px; }
+  #explain { margin-top: 6px; font-size: 1rem; min-height: 1.6em; line-height: 1.6; }
+  #explain .mut { color: var(--err); }
+  [hidden] { display: none !important; }
+  .views { display: flex; flex-wrap: wrap; gap: 4px 48px; align-items: flex-start; }
+  .views > div { max-width: 100%; }
+  .views > div:first-child { flex: 0 0 auto; }
+  .views > div:last-child { flex: 1 1 300px; }
+  #tree, #aln { overflow-x: auto; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .85rem; margin: 6px 0 8px; color: #444; align-items: center; max-width: 640px; }
+  .legend .box { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; border: 1.5px solid; border-radius: 3px; }
+  .legend .tick { display: inline-block; width: 3px; height: 13px; vertical-align: -2px; margin-right: 5px; }
+
+  /* tree */
+  svg { display: block; user-select: none; -webkit-user-select: none; }
+  .ed { stroke: #999; stroke-width: 1.8; }
+  .ed.act { stroke: var(--cur); stroke-width: 3.5; }
+  .bx { stroke-width: 1.5; }
+  .bx.s0 { fill: var(--s0bg); stroke: var(--s0); }
+  .bx.s1 { fill: var(--s1bg); stroke: var(--s1); }
+  .bx.s01 { fill: var(--s01bg); stroke: var(--s01); }
+  .bx.unk { fill: #fff; stroke: #bbb; stroke-dasharray: 3 2; }
+  .bt { font: 700 14px ui-monospace, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .bt.s0 { fill: var(--s0); } .bt.s1 { fill: var(--s1); } .bt.s01 { fill: var(--s01); }
+  .ring { fill: none; stroke: var(--cur); stroke-width: 3; pointer-events: none; }
+  .ring.kid { stroke-width: 2; stroke-dasharray: 4 3; }
+  .chip { stroke: #fff; stroke-width: 1.5; }
+  .chip.s0 { fill: var(--s0); } .chip.s1 { fill: var(--s1); }
+  .ct { font: 700 11px system-ui, sans-serif; fill: #fff; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .lb { font: 13px system-ui, sans-serif; fill: #666; text-anchor: end; dominant-baseline: central; pointer-events: none; }
+  .plus { font: 700 11px system-ui, sans-serif; fill: var(--err); text-anchor: end; dominant-baseline: central; pointer-events: none; }
+  .lf { font: 600 14px system-ui, sans-serif; fill: #222; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .nd { cursor: default; }
+  .dot { fill: #777; }
+  .nd:hover .bx { stroke-width: 2.5; }
+  .tk line { stroke: #444; stroke-width: 2.5; }
+  .tk text { font: 600 11px system-ui, sans-serif; fill: #444; dominant-baseline: central; }
+  .tk.cur line { stroke: var(--err); stroke-width: 3.5; }
+  .tk.cur text { fill: var(--err); font-weight: 800; }
+  .tk.hl line { stroke: var(--cur); stroke-width: 4; }
+  .tk.hl text { fill: var(--curtx); font-weight: 800; }
+  .tk .hit, .tk.hl .hit, .tk.cur .hit { stroke: transparent; stroke-width: 12; }
+
+  /* alignment table */
+  table.aln { border-collapse: collapse; font: 600 15px ui-monospace, Menlo, Consolas, monospace; }
+  .aln th, .aln td { padding: 2px 0; width: 1.5em; min-width: 1.5em; text-align: center; }
+  .aln th.rn { width: auto; padding: 2px 10px 2px 2px; text-align: left; font: 600 .82rem system-ui, sans-serif; color: #555; white-space: nowrap; }
+  .aln thead th { font: 11px system-ui, sans-serif; color: #888; cursor: pointer; }
+  .aln thead th:hover { color: #222; background: #f3f3f3; }
+  .aln td.c0 { color: var(--s0); } .aln td.c1 { color: var(--s1); }
+  .aln td.na { color: #ccc; font-weight: 400; }
+  .aln .cc { background: var(--curbg); }
+  .aln td.mu { box-shadow: inset 0 0 0 2px var(--err); border-radius: 3px; }
+  .aln tr.sep > * { border-top: 1.5px solid #ccc; }
+  .aln tr.cost td { color: #444; font-size: 13px; }
+  .aln tr.cost td.run { color: var(--err); }
+  .aln td.tot { width: auto; padding-left: 10px; text-align: left; font: 700 .9rem system-ui, sans-serif; white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>Maximum parsimony: Fitch’s algorithm on a given tree</h1>
+
+<p class="hint">
+  The parsimony score of a tree is the smallest number of mutations on its edges that explains the alignment. Fitch’s
+  algorithm (1971) finds it for one column at a time: a bottom-up pass assigns every internal node a set of possible
+  states and counts the mutations, and a top-down pass picks one state per node and puts the mutations on edges. Here
+  the states are 0 and 1, and the tree is fixed: there is no search for the best tree. Click a column of the alignment
+  to jump to it; hover a node, a mutation tick or a column for details.
+  Keys: <kbd>→</kbd> step, <kbd>←</kbd> back, <kbd>n</kbd> next column, <kbd>f</kbd> run all, <kbd>r</kbd> reset, <kbd>m</kbd> switch mode.
+</p>
+
+<div class="top">
+  <div>
+    <h2>1 Alignment and tree</h2>
+    <label class="lblk" for="inp">One line per sequence (a name, then 0s and 1s), then the tree in Newick format; every internal node needs two children</label>
+    <div class="inrow">
+      <div class="exbtns">
+        <button id="btnFour" title="Four sequences on ((A,B),(C,D))">Four</button>
+        <button id="btnOther" title="The same alignment on ((A,C),(B,D))">Other tree</button>
+        <button id="btnSix" title="Six sequences, eight columns of every kind">Six</button>
+      </div>
+      <textarea id="inp" spellcheck="false" autocomplete="off" wrap="off"></textarea>
+    </div>
+    <div id="exnote" class="note"></div>
+    <div id="derr" class="err"></div>
+  </div>
+  <div class="model">
+    <h2>2 Fitch’s algorithm, for each column</h2>
+    <ol class="algo" id="algo">
+      <li><b>Bottom-up</b>, children before parents. A leaf’s set S is its own state. An internal node with children l and r
+        gets S = S(l) ∩ S(r) if the two sets share a state; otherwise S = S(l) ∪ S(r), and the column’s cost goes up by 1.</li>
+      <li><b>Top-down</b>, parents before children. The root takes a state from S(root). A child c of node v keeps v’s state if it
+        is in S(c); otherwise c takes the state in S(c), and edge v–c carries a mutation.</li>
+      <li>The column’s cost is the number of unions, which equals the number of mutations found. The parsimony score of the
+        tree is the sum of the costs over all columns.</li>
+    </ol>
+    <p>A column is <i>informative</i> when each state occurs in at least two sequences. A constant column costs 0 and a
+      column where only one sequence differs costs 1 on every tree, so only informative columns can favour one tree over another.</p>
+  </div>
+</div>
+
+<div class="controls stepc">
+  <label>Mode <select id="selMode">
+    <option value="detail">Fitch steps: bottom-up, then top-down, node by node</option>
+    <option value="col">One column per step</option>
+  </select></label>
+  <label>If S(root) = {0,1}, pick <select id="selTie"><option value="0">0</option><option value="1">1</option></select></label>
+</div>
+<div class="controls">
+  <button id="btnBack" title="Previous step (←)">◀ Back</button>
+  <button id="btnStep" title="Next step (→)">Step ▶</button>
+  <button id="btnCol" title="Jump to the end of the current column (n)">Next column ▶▶</button>
+  <button id="btnRun" title="Run to the end (f)">Run all</button>
+  <button id="btnReset" title="Back to the start (r)">Reset</button>
+</div>
+
+<div class="views">
+  <div>
+    <h2>3 Tree</h2>
+    <div class="legend">
+      <span><span class="box" style="background:var(--s0bg);border-color:var(--s0)"></span>{0}</span>
+      <span><span class="box" style="background:var(--s1bg);border-color:var(--s1)"></span>{1}</span>
+      <span><span class="box" style="background:var(--s01bg);border-color:var(--s01)"></span>{0,1}</span>
+      <span><b style="color:var(--err)">+1</b> union: the set cost one mutation</span>
+      <span>● state chosen top-down</span>
+      <span><span class="tick" style="background:var(--err)"></span>mutation in this column,
+        <span class="tick" style="background:#444"></span>in an earlier column (labelled with the column)</span>
+    </div>
+    <div id="tree"></div>
+  </div>
+  <div>
+    <h2>4 Alignment, reconstructed ancestors and costs</h2>
+    <div id="aln"></div>
+    <div class="note">Red box: the state differs from the parent’s, i.e. a mutation on the edge above. · = not known yet.</div>
+  </div>
+</div>
+
+<div id="status"></div>
+<div id="explain"></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const FOUR = 'A 001\nB 000\nC 110\nD 010\n';
+  const EXAMPLES = {
+    four: { text: FOUR + '((A,B),(C,D))', note: 'Four sequences on ((A,B),(C,D)): one mutation per column, score 3.' },
+    other: { text: FOUR + '((A,C),(B,D))', note: 'The same alignment on ((A,C),(B,D)): column 2 now needs two mutations and the score rises to 4, so ((A,B),(C,D)) is the more parsimonious tree of the two.' },
+    six: {
+      text: 'A 10011001\nB 10010101\nC 00111000\nD 00010101\nE 00001110\nF 00001010\n((((A,B),C),D),(E,F))',
+      note: 'Column 2 is constant and column 3 a singleton; the others are informative and cost 1 to 3. Columns 4, 6, 7 and 8 end with S(root) = {0,1}: pick 1 instead of 0 to move their mutations without changing the score.',
+    },
+  };
+  const DEFAULTS = { selMode: 'detail', selTie: '0' };
+
+  // ---------- pure model ----------
+  const MAXN = 12, MAXL = 40;
+  // Newick: (a,b)label:length;  labels of internal nodes are kept, lengths are read and ignored. nodes[] is in
+  // pre-order (a node before its children, left child first), so nodes[0] is the root.
+  function parseNewick(str) {
+    const s = str.replace(/\s+/g, ''), nodes = [];
+    let i = 0;
+    const fail = msg => { throw new Error(`Tree: ${msg} at character ${i + 1} of the Newick string.`); };
+    const word = () => { const w = /^[^(),:;]*/.exec(s.slice(i))[0]; i += w.length; return w; };
+    function node(parent) {
+      const nd = { id: nodes.length, parent, kids: [], name: '' };
+      nodes.push(nd);
+      if (s[i] === '(') {
+        i++;
+        for (;;) {
+          nd.kids.push(node(nd.id));
+          if (s[i] === ',') i++;
+          else if (s[i] === ')') { i++; break; }
+          else fail('expected “,” or “)”');
+        }
+        nd.name = word();
+      } else if (!(nd.name = word())) fail('expected a name or “(”');
+      if (s[i] === ':') { i++; word(); }
+      return nd.id;
+    }
+    try {
+      if (!s) fail('the tree is empty');
+      node(-1);
+      if (s[i] === ';') i++;
+      if (i < s.length) fail('unexpected text');
+    } catch (e) { return { error: e.message }; }
+    return { nodes };
+  }
+
+  // Lines "name 0101…" up to the first line starting with "(", which starts the Newick tree. The tree T has its
+  // leaves matched to alignment rows, internal nodes in post-order (post) and pre-order (pre), and a label per node:
+  // the Newick label, else "root", else the leaves below it (AB) for one-letter names or u1, u2, … in post-order.
+  function parseInput(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    const ti = lines.findIndex(l => l[0] === '(');
+    if (ti < 0) return { error: 'Put the tree in Newick format after the alignment, e.g. ((A,B),(C,D)).' };
+    const names = [], seqs = [];
+    for (let i = 0; i < ti; i++) {
+      const tok = lines[i].split(/\s+/);
+      if (tok.length < 2) return { error: `Line ${i + 1} needs a name and a sequence of 0s and 1s.` };
+      const name = tok[0], seq = tok.slice(1).join('');
+      if (/[^01]/.test(seq)) return { error: `The sequence of ${name} may only contain 0 and 1.` };
+      if (names.includes(name)) return { error: `The name “${name}” is used twice.` };
+      if (seqs.length && seq.length !== seqs[0].length) return { error: `${name} has ${seq.length} column${seq.length === 1 ? '' : 's'} but ${names[0]} has ${seqs[0].length}.` };
+      names.push(name); seqs.push(seq);
+    }
+    if (names.length < 2) return { error: 'Enter at least two sequences before the tree.' };
+    if (names.length > MAXN) return { error: `At most ${MAXN} sequences.` };
+    if (seqs[0].length > MAXL) return { error: `At most ${MAXL} columns.` };
+    const P = parseNewick(lines.slice(ti).join(''));
+    if (P.error) return P;
+    const nodes = P.nodes, row = new Map(names.map((x, t) => [x, t])), seen = new Set();
+    for (const nd of nodes) {
+      if (!nd.kids.length) {
+        if (!row.has(nd.name)) return { error: `The tree has a leaf “${nd.name}” that is not in the alignment.` };
+        if (seen.has(nd.name)) return { error: `“${nd.name}” appears twice in the tree.` };
+        seen.add(nd.name);
+        nd.row = row.get(nd.name);
+      } else if (nd.kids.length !== 2) {
+        return { error: `${nd.parent < 0 ? 'The root' : 'An internal node'} has ${nd.kids.length} child${nd.kids.length === 1 ? '' : 'ren'}, but Fitch’s algorithm here needs exactly two` +
+          (nd.parent < 0 && nd.kids.length === 3 ? '; root the tree first, e.g. write (A,B,C) as ((A,B),C).' : '.') };
+      }
+    }
+    for (const x of names) if (!seen.has(x)) return { error: `${x} is in the alignment but not in the tree.` };
+    const T = { nodes, root: 0, post: [], pre: [], leaves: [], postIdx: [], preIdx: [], leafOf: [] };
+    (function walk(v) { if (nodes[v].kids.length) { nodes[v].kids.forEach(walk); T.post.push(v); } })(0);
+    for (const nd of nodes) {
+      if (nd.kids.length) T.pre.push(nd.id);
+      else { T.leaves.push(nd.id); T.leafOf[nd.row] = nd.id; }
+    }
+    T.post.forEach((v, t) => { T.postIdx[v] = t; });
+    T.pre.forEach((v, t) => { T.preIdx[v] = t; });
+    const short = names.every(x => x.length === 1);
+    const clade = v => nodes[v].kids.length ? nodes[v].kids.map(clade).join('') : nodes[v].name;
+    for (const nd of nodes) nd.label = nd.name || (nd.id === 0 ? 'root' : short ? clade(nd.id) : 'u' + (T.postIdx[nd.id] + 1));
+    return { names, seqs, T };
+  }
+
+  // Fitch on one column; x[row] is the state of each sequence. Sets are bit masks: 1 = {0}, 2 = {1}, 3 = {0,1}.
+  // uni[v] marks the unions (each costs 1). A root with S = {0,1} takes state tie. A child whose set lacks its
+  // parent's state has a one-state set (states are binary), which it takes, and that edge carries a mutation.
+  function fitchColumn(T, x, tie) {
+    const N = T.nodes.length, set = new Array(N).fill(0), uni = new Array(N).fill(false), st = new Array(N).fill(-1), muts = [];
+    for (const v of T.leaves) set[v] = 1 << x[T.nodes[v].row];
+    for (const v of T.post) {
+      const [l, r] = T.nodes[v].kids, I = set[l] & set[r];
+      if (I) set[v] = I; else { set[v] = set[l] | set[r]; uni[v] = true; }
+    }
+    st[T.root] = set[T.root] === 3 ? tie : set[T.root] - 1;
+    for (const v of T.pre) for (const c of T.nodes[v].kids) {
+      st[c] = set[c] >> st[v] & 1 ? st[v] : set[c] - 1;
+      if (st[c] !== st[v]) muts.push({ v, c, from: st[v], to: st[c] });
+    }
+    const n1 = x.reduce((a, b) => a + b, 0), n0 = x.length - n1;
+    const kind = !n0 || !n1 ? 'const' : Math.min(n0, n1) === 1 ? 'single' : 'inf';
+    return { set, uni, st, muts, cost: uni.filter(Boolean).length, kind };
+  }
+
+  // emut[c] lists the mutations on the edge above node c, in column order.
+  function buildModel(text, tie) {
+    const P = parseInput(text); if (P.error) return P;
+    const { names, seqs, T } = P, L = seqs[0].length, cols = [], emut = T.nodes.map(() => []);
+    for (let j = 0; j < L; j++) {
+      const C = fitchColumn(T, seqs.map(q => +q[j]), tie);
+      cols.push(C);
+      for (const mu of C.muts) emut[mu.c].push({ j, from: mu.from, to: mu.to });
+    }
+    return { names, seqs, n: names.length, L, T, cols, emut, tie, total: cols.reduce((t, C) => t + C.cost, 0) };
+  }
+
+  // Detailed mode: per column, one 'up' step per internal node in post-order and one 'down' step per internal node in
+  // pre-order (the node passes its state to its two children; the root first picks its own). Column mode: one step per column.
+  function buildSteps(M, mode) {
+    const steps = [{ kind: 'start' }], P = M.T.post.length;
+    for (let j = 0; j < M.L; j++) {
+      if (mode === 'col') { steps.push({ kind: 'col', j }); continue; }
+      for (let t = 0; t < P; t++) steps.push({ kind: 'up', j, t });
+      for (let t = 0; t < P; t++) steps.push({ kind: 'down', j, t });
+    }
+    steps.push({ kind: 'end' });
+    return steps;
+  }
+
+  // Leaves left to right in Newick order, all at the bottom; an internal node sits above the middle of its children,
+  // at a level given by its height (edges to its deepest leaf). Levels are tall enough for the ticks of every edge.
+  const LS = 76, NW = 56, NH = 28, LBW = 30, X0 = 84, TOP = 18, TS = 16;
+  function layoutTree(T, emut) {
+    const { nodes } = T, x = [], y = [], h = [];
+    let k = 0;
+    (function walk(v) {
+      const nd = nodes[v];
+      if (!nd.kids.length) { x[v] = X0 + LS * k++; h[v] = 0; return; }
+      nd.kids.forEach(walk);
+      x[v] = (x[nd.kids[0]] + x[nd.kids[1]]) / 2;
+      h[v] = 1 + Math.max(h[nd.kids[0]], h[nd.kids[1]]);
+    })(T.root);
+    let LH = 66;
+    for (const nd of nodes) if (nd.parent >= 0) LH = Math.max(LH, (NH + 8 + TS * (emut[nd.id].length + 1)) / (h[nd.parent] - h[nd.id]));
+    for (const nd of nodes) y[nd.id] = TOP + NH / 2 + (h[T.root] - h[nd.id]) * LH;
+    return { x, y, W: X0 + LS * (k - 1) + 70, H: TOP + NH + h[T.root] * LH + 30 };
+  }
+
+  // ---------- state ----------
+  let M = null, steps = [], lay = null, s = 0;
+  function rebuild(keep) {
+    M = buildModel($('inp').value, +$('selTie').value);
+    if (M.error) { steps = []; s = 0; render(); return; }
+    steps = buildSteps(M, $('selMode').value);
+    lay = layoutTree(M.T, M.emut);
+    s = keep ? Math.min(s, steps.length - 1) : 0;
+    render();
+  }
+  function load(key) { $('inp').value = EXAMPLES[key].text; rebuild(false); }
+  // Switching mode keeps the column: a column in progress is shown complete in the other mode.
+  function switchMode() {
+    if (M.error) return;
+    const old = steps[s];
+    steps = buildSteps(M, $('selMode').value);
+    if (old.kind === 'start' || old.kind === 'end') s = old.kind === 'start' ? 0 : steps.length - 1;
+    else {
+      let t = steps.length - 1;
+      while (steps[t].j !== old.j) t--;
+      s = t;
+    }
+    render();
+  }
+  const S = () => M.error ? 0 : steps.length - 1;
+  const setS = v => { s = Math.max(0, Math.min(S(), v)); render(); };
+  const lastOfCol = j => { let t = steps.length - 1; while (t > 0 && steps[t].j !== j) t--; return t; };
+  function nextCol() {
+    const st = steps[s];
+    if (st.kind === 'end') return;
+    const j = st.kind === 'start' ? 0 : st.j, e = lastOfCol(j);
+    setS(s < e ? e : j + 1 < M.L ? lastOfCol(j + 1) : S());
+  }
+
+  // What is known at step s: the current column j, how many internal nodes the bottom-up (up) and top-down (down)
+  // passes have done in it, and how many columns before it are complete (done).
+  function view() {
+    const st = steps[s], P = M.T.post.length;
+    if (st.kind === 'start') return { st, j: 0, up: 0, down: 0, done: 0 };
+    if (st.kind === 'end') return { st, j: -1, up: P, down: P, done: M.L };
+    if (st.kind === 'col') return { st, j: st.j, up: P, down: P, done: st.j };
+    if (st.kind === 'up') return { st, j: st.j, up: st.t + 1, down: 0, done: st.j };
+    return { st, j: st.j, up: P, down: st.t + 1, done: st.j };
+  }
+  const setKnown = (V, v) => !M.T.nodes[v].kids.length || M.T.postIdx[v] < V.up;
+  // the state of v (and so the mutation on the edge above it) is known once top-down has reached its parent
+  const stKnown = (V, v) => v === M.T.root ? V.down > 0 : M.T.preIdx[M.T.nodes[v].parent] < V.down;
+  const known = (V, j, v) => j < V.done || j === V.j && stKnown(V, v);
+  const setStr = m => m === 1 ? '{0}' : m === 2 ? '{1}' : '{0,1}';
+  const setCls = m => m === 1 ? 's0' : m === 2 ? 's1' : 's01';
+  const nm = v => esc(M.T.nodes[v].label);
+  const plural = (v, w) => `${v} ${w}${v === 1 ? '' : 's'}`;
+
+  // ---------- rendering ----------
+  function renderTree(V) {
+    const { T, emut } = M, { nodes } = T, C = V.j >= 0 ? M.cols[V.j] : null, { x, y } = lay, st = V.st;
+    const cur = st.kind === 'up' ? T.post[st.t] : st.kind === 'down' ? T.pre[st.t] : -1;
+    const kids = new Set(cur >= 0 ? nodes[cur].kids : []);
+    let o = `<svg xmlns="http://www.w3.org/2000/svg" width="${lay.W}" height="${lay.H}" viewBox="0 0 ${lay.W} ${lay.H}">`, ticks = '';
+    for (const nd of nodes) {
+      if (nd.parent < 0) continue;
+      const p = nd.parent, c = nd.id, gap = C ? NH / 2 : 4, x1 = x[p], y1 = y[p] + gap, x2 = x[c], y2 = y[c] - gap;
+      o += `<line class="ed${p === cur && kids.has(c) ? ' act' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+      // ticks keep fixed slots along the edge; the label goes on the outer side (away from the sibling edge)
+      const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+      const [nx, ny] = ux < 0 ? [-uy, ux] : [uy, -ux], list = emut[c];
+      list.forEach((mu, i) => {
+        const cc = C && mu.j === V.j;
+        if (!(mu.j < V.done || cc && stKnown(V, c))) return;
+        const t = (i + 1) / (list.length + 1), px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t;
+        const a = `x1="${(px - nx * 7).toFixed(1)}" y1="${(py - ny * 7).toFixed(1)}" x2="${(px + nx * 7).toFixed(1)}" y2="${(py + ny * 7).toFixed(1)}"`;
+        ticks += `<g class="tk${cc ? ' cur' : ''}" data-j="${mu.j}" data-c="${c}"><line class="hit" ${a}/><line ${a}/>` +
+          `<text x="${(px + nx * 13).toFixed(1)}" y="${(py + ny * 13).toFixed(1)}" text-anchor="${nx > 0 ? 'start' : 'end'}">${mu.j + 1}</text></g>`;
+      });
+    }
+    o += ticks;
+    for (const nd of nodes) {
+      const v = nd.id, cx = x[v], cy = y[v], leaf = !nd.kids.length, w = leaf ? LBW : NW;
+      if (!C) {   // the end: no current column, only the mutations
+        o += `<g class="nd" data-v="${v}"><circle class="dot" cx="${cx}" cy="${cy}" r="4"/>` + (leaf ? `<text class="lf" x="${cx}" y="${cy + 16}">${nm(v)}</text>` :
+          `<text class="lb" x="${cx - 9}" y="${cy - 6}">${nm(v)}</text>`) + '</g>';
+        continue;
+      }
+      const ring = v === cur ? '<rect class="ring" ' : kids.has(v) ? '<rect class="ring kid" ' : '';
+      o += `<g class="nd" data-v="${v}">`;
+      if (ring) o += `${ring}x="${cx - w / 2 - 4}" y="${cy - NH / 2 - 4}" width="${w + 8}" height="${NH + 8}" rx="8"/>`;
+      if (leaf) {
+        const b = C.st[v], cls = 's' + b;
+        o += `<rect class="bx ${cls}" x="${cx - w / 2}" y="${cy - NH / 2}" width="${w}" height="${NH}" rx="5"/>` +
+          `<text class="bt ${cls}" x="${cx}" y="${cy}">${b}</text><text class="lf" x="${cx}" y="${cy + NH / 2 + 14}">${nm(v)}</text>`;
+      } else {
+        const sk = setKnown(V, v), cls = sk ? setCls(C.set[v]) : 'unk';
+        o += `<rect class="bx ${cls}" x="${cx - w / 2}" y="${cy - NH / 2}" width="${w}" height="${NH}" rx="5"/>` +
+          (sk ? `<text class="bt ${cls}" x="${cx}" y="${cy}">${setStr(C.set[v])}</text>` : '') +
+          `<text class="lb" x="${cx - w / 2 - 9}" y="${cy - 7}">${nm(v)}</text>` +
+          (sk && C.uni[v] ? `<text class="plus" x="${cx - w / 2 - 9}" y="${cy + 8}">+1</text>` : '');
+        if (stKnown(V, v)) o += `<circle class="chip s${C.st[v]}" cx="${cx + w / 2 + 11}" cy="${cy}" r="9"/><text class="ct" x="${cx + w / 2 + 11}" y="${cy}">${C.st[v]}</text>`;
+      }
+      o += '</g>';
+    }
+    $('tree').innerHTML = o + '</svg>';
+  }
+
+  function renderAln(V) {
+    const { T, L } = M, C = V.j >= 0 ? M.cols[V.j] : null, P = T.post.length, complete = C && V.up === P && V.down === P;
+    const cc = j => j === V.j ? ' cc' : '';
+    let o = '<table class="aln"><thead><tr><th class="rn"></th>';
+    for (let j = 0; j < L; j++) o += `<th class="${cc(j).trim()}" data-j="${j}" title="Column ${j + 1}">${j + 1}</th>`;
+    o += '<th></th></tr></thead><tbody>';
+    // a cell with v's state in column j; red box when it differs from the parent's state
+    const cell = (v, j) => {
+      const Cj = M.cols[j], kn = known(V, j, v), leaf = !T.nodes[v].kids.length;
+      if (!leaf && !kn) return `<td class="na${cc(j)}">·</td>`;
+      const b = Cj.st[v], mu = kn && v !== T.root && b !== Cj.st[T.nodes[v].parent];
+      return `<td class="c${b}${mu ? ' mu' : ''}${cc(j)}">${b}</td>`;
+    };
+    M.names.forEach((_, t) => {
+      const v = T.leafOf[t];
+      o += `<tr><th class="rn">${nm(v)}</th>`;
+      for (let j = 0; j < L; j++) o += cell(v, j);
+      o += '<td></td></tr>';
+    });
+    T.pre.forEach((v, t) => {
+      o += `<tr${t ? '' : ' class="sep"'}><th class="rn">${nm(v)}</th>`;
+      for (let j = 0; j < L; j++) o += cell(v, j);
+      o += '<td></td></tr>';
+    });
+    let tot = 0;
+    o += '<tr class="sep cost"><th class="rn">cost</th>';
+    for (let j = 0; j < L; j++) {
+      if (j < V.done || j === V.j && complete) { o += `<td class="${cc(j).trim()}">${M.cols[j].cost}</td>`; tot += M.cols[j].cost; }
+      else if (j === V.j && V.up) o += `<td class="run cc">${T.post.slice(0, V.up).filter(v => C.uni[v]).length}</td>`;
+      else o += `<td class="na${cc(j)}">·</td>`;
+    }
+    o += `<td class="tot">${V.done || complete ? `Σ = ${tot}` : ''}</td></tr>`;
+    $('aln').innerHTML = o + '</tbody></table>';
+  }
+
+  // ---------- explanations ----------
+  const KIND = {
+    const: 'a constant column, which needs no mutation on any tree',
+    single: 'a singleton column (one sequence differs), which needs one mutation on any tree',
+    inf: 'an informative column (each state in at least two sequences), whose cost depends on the tree',
+  };
+  const mutTxt = mu => `${nm(mu.v)}–${nm(mu.c)} (${mu.from}→${mu.to})`;
+  function colSummary(j) {
+    const C = M.cols[j], T = M.T;
+    return `<b>Column ${j + 1}</b> is ${KIND[C.kind]}. Bottom-up: ` +
+      T.post.map(v => `S(${nm(v)}) = ${setStr(C.set[v])}${C.uni[v] ? ' <span class="mut">(union, +1)</span>' : ''}`).join(', ') + '. ' +
+      `Top-down from root = ${C.st[T.root]}${C.set[T.root] === 3 ? ` (S(root) = {0,1}, pick ${M.tie})` : ''}: ` +
+      (C.muts.length ? `mutation${C.muts.length > 1 ? 's' : ''} on ${C.muts.map(mutTxt).join(', ')}` : 'no mutation') + `. Cost <b>${C.cost}</b>.`;
+  }
+  function explainStep(V) {
+    const st = V.st, T = M.T, P = T.post.length;
+    if (st.kind === 'start') {
+      return `<b>Start.</b> Fitch’s algorithm scores every column on its own. ` + ($('selMode').value === 'col' ?
+        `In this mode each step does a whole column: its sets, its states and its mutations. ` :
+        `In this mode each column takes ${2 * P} steps: ${P} bottom-up, one per internal node, then ${P} top-down. <kbd>n</kbd> finishes a column. `) +
+        `The leaves show column 1. Press → to begin.`;
+    }
+    if (st.kind === 'end') {
+      const un = M.cols.filter(C => C.kind !== 'inf'), uc = un.reduce((t, C) => t + C.cost, 0);
+      return `<b>Done.</b> The parsimony score of this tree is <b>${M.total}</b> = ${M.cols.map(C => C.cost).join(' + ')}, the number of ticks on its edges. ` +
+        (un.length ? `The ${plural(un.length, 'uninformative column')} contribute${un.length === 1 ? 's' : ''} ${uc} on any tree, so only the other columns can tell trees apart. ` : '') +
+        'Fitch’s algorithm scores a given tree; finding the most parsimonious tree means scoring other trees too (edit the Newick line to try one).';
+    }
+    if (st.kind === 'col') return colSummary(st.j);
+    const C = M.cols[st.j], head = `<b>Column ${st.j + 1}, ${st.kind === 'up' ? 'bottom-up' : 'top-down'}, node ${nm(st.kind === 'up' ? T.post[st.t] : T.pre[st.t])}:</b> `;
+    if (st.kind === 'up') {
+      const v = T.post[st.t], [l, r] = T.nodes[v].kids, run = T.post.slice(0, st.t + 1).filter(u => C.uni[u]).length;
+      let o = head + `S(${nm(l)}) = ${setStr(C.set[l])} and S(${nm(r)}) = ${setStr(C.set[r])}. `;
+      o += C.uni[v] ? `They share no state, so S(${nm(v)}) is their union ${setStr(C.set[v])}, and one mutation is needed below ${nm(v)}: <span class="mut">cost +1</span>, now ${run}.` :
+        `They share ${setStr(C.set[v])}, so S(${nm(v)}) = ${setStr(C.set[v])} and nothing is added to the cost${run ? ` (still ${run})` : ''}.`;
+      if (st.t === P - 1) o += ` The bottom-up pass is done: column ${st.j + 1} costs <b>${C.cost}</b>. The top-down pass now places ${C.cost === 1 ? 'that mutation' : 'those mutations'}.`;
+      return o;
+    }
+    const v = T.pre[st.t], sv = C.st[v];
+    let o = head;
+    if (v === T.root) o += C.set[v] === 3 ? `S(${nm(v)}) = {0,1}, so either state works equally well; pick <b>${sv}</b>. ` : `${nm(v)} takes the only state in S(${nm(v)}) = ${setStr(C.set[v])}: <b>${sv}</b>. `;
+    else o += `${nm(v)} has state ${sv}. `;
+    o += T.nodes[v].kids.map(c => C.set[c] >> sv & 1 ? `${sv} ∈ S(${nm(c)}) = ${setStr(C.set[c])}, so ${nm(c)} = ${sv}` :
+      `${sv} ∉ S(${nm(c)}) = ${setStr(C.set[c])}, so ${nm(c)} = ${C.st[c]}: <b class="mut">mutation ${sv}→${C.st[c]}</b> on edge ${nm(v)}–${nm(c)}`).join('; ') + '.';
+    if (st.t === P - 1) o += ` Column ${st.j + 1} is done: ${plural(C.muts.length, 'mutation')}, as many as the unions in the bottom-up pass.`;
+    return o;
+  }
+  function explainNode(V, v) {
+    const C = V.j >= 0 ? M.cols[V.j] : null, nd = M.T.nodes[v];
+    if (!C) return `<b>${nm(v)}</b>` + (nd.kids.length ? '' : `: ${M.seqs[nd.row]}`) + '. Click a column of the alignment to see its sets and states.';
+    let o = `<b>${nm(v)}</b>, column ${V.j + 1}: `;
+    if (!nd.kids.length) o += `a leaf with state ${C.st[v]}, so S = ${setStr(C.set[v])}.`;
+    else if (!setKnown(V, v)) o += 'the bottom-up pass has not reached it yet.';
+    else {
+      const [l, r] = nd.kids;
+      o += `S = ${C.uni[v] ? 'S(' + nm(l) + ') ∪ S(' + nm(r) + ')' : 'S(' + nm(l) + ') ∩ S(' + nm(r) + ')'} = ${setStr(C.set[v])}${C.uni[v] ? ' (union, +1)' : ''}` +
+        (stKnown(V, v) ? `; state ${C.st[v]}.` : '; its state is not chosen yet.');
+    }
+    if (v !== M.T.root && stKnown(V, v)) o += C.st[v] !== C.st[nd.parent] ? ` The edge from ${nm(nd.parent)} carries a mutation ${C.st[nd.parent]}→${C.st[v]}.` : '';
+    return o;
+  }
+  function showExplainDefault() {
+    $('explain').innerHTML = M.error ? `<span class="err">${esc(M.error)}</span>` : explainStep(view());
+  }
+  function renderStatus(V) {
+    const st = V.st, P = M.T.post.length;
+    let o = `Step <b>${s}</b> / ${S()} · ${M.n} sequences, ${M.L} columns, ${P} internal nodes · `;
+    if (st.kind === 'start') o += 'not started';
+    else if (st.kind === 'end') o += `parsimony score ${M.total}`;
+    else {
+      const done = M.cols.slice(0, V.done).reduce((t, C) => t + C.cost, 0), complete = V.up === P && V.down === P;
+      o += `column ${V.j + 1} of ${M.L}` + (st.kind === 'col' ? '' : `, ${st.kind === 'up' ? 'bottom-up' : 'top-down'} ${st.t + 1} of ${P}`) +
+        ` · score so far ${done + (complete ? M.cols[V.j].cost : 0)}`;
+    }
+    $('status').innerHTML = o;
+  }
+
+  function render() {
+    $('derr').textContent = M.error || '';
+    const ex = Object.values(EXAMPLES).find(e => e.text === $('inp').value);
+    $('exnote').textContent = ex ? ex.note : '';
+    const kind = M.error ? '' : steps[s].kind;
+    document.querySelectorAll('#algo li').forEach((li, j) => li.classList.toggle('on', j === { up: 0, down: 1, col: 2, end: 2 }[kind]));
+    if (M.error) {
+      for (const id of ['tree', 'aln', 'status']) $(id).innerHTML = '';
+      showExplainDefault();
+      $('btnBack').disabled = $('btnStep').disabled = $('btnCol').disabled = $('btnRun').disabled = true;
+      return;
+    }
+    const V = view();
+    renderTree(V); renderAln(V); renderStatus(V); showExplainDefault();
+    $('btnBack').disabled = s === 0;
+    $('btnStep').disabled = $('btnCol').disabled = $('btnRun').disabled = s === S();
+  }
+
+  // ---------- events ----------
+  // Hovering a column header highlights its ticks by toggling a class, so the tree is not redrawn.
+  function hlCol(j) { for (const g of $('tree').querySelectorAll('g.tk')) g.classList.toggle('hl', +g.dataset.j === j); }
+  $('aln').addEventListener('click', e => {
+    const th = e.target.closest('th[data-j]');
+    if (!th || M.error) return;
+    const j = +th.dataset.j;
+    setS($('selMode').value === 'col' ? j + 1 : steps.findIndex(st => st.j === j));
+  });
+  $('aln').addEventListener('mouseover', e => {
+    const th = e.target.closest('th[data-j]');
+    if (th && !M.error) { hlCol(+th.dataset.j); $('explain').innerHTML = colSummary(+th.dataset.j) + ' Click to jump to this column.'; }
+  });
+  $('aln').addEventListener('mouseout', e => { if (e.target.closest('th[data-j]')) { hlCol(-1); showExplainDefault(); } });
+  $('tree').addEventListener('mouseover', e => {
+    if (M.error) return;
+    const tk = e.target.closest('g.tk'), nd = e.target.closest('g.nd');
+    if (tk) {
+      const j = +tk.dataset.j, c = +tk.dataset.c, C = M.cols[j], mu = C.muts.find(m => m.c === c);
+      $('explain').innerHTML = `<b>Column ${j + 1}:</b> mutation ${mutTxt(mu)}, one of the ${C.cost} mutation${C.cost === 1 ? '' : 's'} of this column.`;
+    } else if (nd) $('explain').innerHTML = explainNode(view(), +nd.dataset.v);
+  });
+  $('tree').addEventListener('mouseout', e => { if (e.target.closest('g.tk, g.nd')) showExplainDefault(); });
+  $('btnStep').addEventListener('click', () => setS(s + 1));
+  $('btnBack').addEventListener('click', () => setS(s - 1));
+  $('btnCol').addEventListener('click', nextCol);
+  $('btnRun').addEventListener('click', () => setS(S()));
+  $('btnReset').addEventListener('click', () => setS(0));
+  $('btnFour').addEventListener('click', () => load('four'));
+  $('btnOther').addEventListener('click', () => load('other'));
+  $('btnSix').addEventListener('click', () => load('six'));
+  $('inp').addEventListener('input', () => rebuild(false));
+  $('selTie').addEventListener('change', () => rebuild(true));
+  $('selMode').addEventListener('change', switchMode);
+  document.addEventListener('keydown', e => {
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': setS(s + 1); e.preventDefault(); break;
+      case 'ArrowLeft': case 'ArrowUp': case 'Backspace': setS(s - 1); e.preventDefault(); break;
+      case 'n': case 'N': if (!M.error) nextCol(); break;
+      case 'f': case 'F': setS(S()); break;
+      case 'r': case 'R': setS(0); break;
+      case 'm': case 'M': $('selMode').value = $('selMode').value === 'col' ? 'detail' : 'col'; switchMode(); break;
+    }
+  });
+
+  // Browsers may restore edited form values on reload; start from the first example regardless.
+  for (const id in DEFAULTS) $(id).value = DEFAULTS[id];
+  load('four');
+})();
+</script>
+</body>
+</html>
